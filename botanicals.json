@@ -1,0 +1,15 @@
+{
+  "version": "1.0.0",
+  "releaseNotes": "Base inicial: 70 botânicos, 8 categorias.",
+  "updatedAt": "2025-01-01",
+  "botanicals": {
+    "_EXEMPLO_Pimenta_Baniwa": {
+      "icon": "🌶",
+      "category": "Especiarias",
+      "compounds": [
+        { "name": "Capsaicina", "conc": 0.5, "aroma": "Picante", "min": 0.01, "max": 0.10 },
+        { "name": "Dihidrocapsaicina", "conc": 0.3, "aroma": "Picante", "min": 0.01, "max": 0.10 }
+      ]
+    }
+  }
+}

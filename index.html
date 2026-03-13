@@ -1,0 +1,1491 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#060c06">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Gin Lab">
+  <meta name="description" content="Gin Aromatics Lab — perfil aromático de botânicos para gin e coquetéis">
+  <title>Gin Aromatics Lab</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body, #root { height: 100%; }
+    body { background: #060c06; color: #e0f0e0; overflow-x: hidden; }
+    #install-banner {
+      display: none; position: fixed; bottom: 0; left: 0; right: 0; z-index: 9999;
+      background: linear-gradient(135deg,#0d2208,#091609);
+      border-top: 1px solid #2a5a1a;
+      padding: 12px 20px; align-items: center; gap: 12px;
+      font-family: 'DM Mono', monospace; font-size: 12px; color: #a0da60;
+    }
+    #install-banner.visible { display: flex; }
+    #install-banner button {
+      background: linear-gradient(135deg,#1c4a0c,#12300a); border: 1px solid #3a7a1a;
+      color: #a0da60; padding: 7px 18px; border-radius: 7px; cursor: pointer;
+      font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 0.5px;
+    }
+    #install-close { margin-left: auto; background: transparent; border: none; color: #305030; font-size: 18px; cursor: pointer; }
+    #offline-bar { display: none; position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
+      background: #3a1a0a; border-bottom: 1px solid #7a3a1a; padding: 6px; text-align: center;
+      font-family: 'DM Mono', monospace; font-size: 10px; color: #d07040; letter-spacing: 1px; }
+  </style>
+</head>
+<body>
+  <div id="offline-bar">⚡ MODO OFFLINE — dados locais</div>
+  <div id="root"></div>
+
+  <div id="install-banner">
+    <span>🌿</span>
+    <div>
+      <div style="font-weight:500">Instalar Gin Aromatics Lab</div>
+      <div style="font-size:10px;color:#5a9a3a;margin-top:2px">Funciona offline · acesso direto da tela inicial</div>
+    </div>
+    <button id="install-btn">⬇ Instalar</button>
+    <button id="install-close">✕</button>
+  </div>
+
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script>
+    // Service Worker
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js')
+          .then(r => console.log('[SW]', r.scope))
+          .catch(e => console.warn('[SW] error', e));
+      });
+    }
+
+    // Offline indicator
+    function updateOnlineStatus() {
+      document.getElementById('offline-bar').style.display = navigator.onLine ? 'none' : 'block';
+    }
+    window.addEventListener('online', updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+    updateOnlineStatus();
+
+    // PWA Install
+    let deferredPrompt;
+    const banner = document.getElementById('install-banner');
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault(); deferredPrompt = e;
+      banner.classList.add('visible');
+    });
+    document.getElementById('install-btn').addEventListener('click', async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      await deferredPrompt.userChoice;
+      deferredPrompt = null; banner.classList.remove('visible');
+    });
+    document.getElementById('install-close').addEventListener('click', () => banner.classList.remove('visible'));
+    window.addEventListener('appinstalled', () => { banner.classList.remove('visible'); deferredPrompt = null; });
+
+    // Storage — localStorage with in-memory fallback
+    window.storage = {
+      _store: {},
+      async get(key) {
+        try {
+          const raw = localStorage.getItem('ginlab_' + key);
+          if (raw === null) throw new Error('not found');
+          return { key, value: raw };
+        } catch(e) {
+          if (this._store[key] !== undefined) return { key, value: this._store[key] };
+          throw e;
+        }
+      },
+      async set(key, value) {
+        this._store[key] = value;
+        try { localStorage.setItem('ginlab_' + key, value); } catch(e) {}
+        return { key, value };
+      },
+      async delete(key) {
+        delete this._store[key];
+        try { localStorage.removeItem('ginlab_' + key); } catch(e) {}
+        return { key, deleted: true };
+      },
+      async list(prefix) {
+        const keys = Object.keys(localStorage)
+          .filter(k => k.startsWith('ginlab_' + (prefix||'')))
+          .map(k => k.replace('ginlab_', ''));
+        return { keys };
+      }
+    };
+  </script>
+
+  <script type="text/babel" data-presets="react">
+const { useState, useMemo, useEffect, useCallback } = React;
+
+// ─── CATEGORIAS QUE PEDEM BRIX/pH NO MODO COQUETEL ───────────────────────────
+// Apenas ingredientes que têm açúcares e matriz aquosa relevante
+const CATS_WITH_BRIX_PH = ["Frutas", "Cítricos", "Flores"];
+
+// Brix e pH médios de literatura por botânico (usados quando não informado)
+const DEFAULT_BRIX_PH = {
+  // Frutas
+  "Morango":            { brix: 8.0,  ph: 3.3 },
+  "Framboesa":          { brix: 9.0,  ph: 3.1 },
+  "Mirtilo":            { brix: 12.0, ph: 3.4 },
+  "Maracujá":           { brix: 14.0, ph: 2.9 },
+  "Manga":              { brix: 14.5, ph: 3.6 },
+  "Banana":             { brix: 22.0, ph: 4.6 },
+  "Maçã":               { brix: 12.0, ph: 3.5 },
+  "Pêssego":            { brix: 10.0, ph: 3.7 },
+  "Lichia":             { brix: 16.0, ph: 4.1 },
+  "Pepino":             { brix: 3.5,  ph: 5.5 },
+  "Baga de Sabugueiro": { brix: 10.0, ph: 3.5 },
+  "Groselha Preta":     { brix: 9.0,  ph: 3.0 },
+  "Cambuci":            { brix: 6.0,  ph: 2.8 },
+  "Limão (suco)":       { brix: 8.0,  ph: 2.3 },
+  "Laranja (suco)":     { brix: 11.0, ph: 3.8 },
+  "Abacaxi (suco)":     { brix: 12.0, ph: 3.5 },
+  // Cítricos (cascas — Brix não se aplica, mas pH do fruto afeta extração)
+  "Limão Taiti (casca)":     { brix: null, ph: 2.3 },
+  "Limão Siciliano (casca)": { brix: null, ph: 2.5 },
+  "Laranja Doce (casca)":    { brix: null, ph: 3.8 },
+  "Laranja Bahia (casca)":   { brix: null, ph: 3.7 },
+  "Laranja Amarga (casca)":  { brix: null, ph: 3.5 },
+  "Grapefruit (casca)":      { brix: null, ph: 3.1 },
+  "Yuzu (casca)":            { brix: null, ph: 2.8 },
+  "Bergamota (casca)":       { brix: null, ph: 3.2 },
+  "Limão-Caviar":            { brix: 8.0,  ph: 2.9 },
+  // Flores com Brix
+  "Hibisco":                 { brix: 4.0,  ph: 2.5 },
+  "Rosa (pétalas)":          { brix: 3.0,  ph: 5.2 },
+  "Flor de Sabugueiro":      { brix: 5.0,  ph: 4.8 },
+  "Camomila":                { brix: 2.0,  ph: 5.5 },
+};
+
+// ─── FATORES DE EXTRAÇÃO por modo e categoria ─────────────────────────────────
+// gin = destilação concentra terpenos mas perde compostos pesados
+// coquetel = extração completa, polpa presente, mais compostos de baixa volatilidade
+const EXTRACTION = {
+  gin: {
+    Base: 1.0, Cítricos: 0.85, Especiarias: 0.90, Raízes: 0.80,
+    Ervas: 0.90, Flores: 0.75, Frutas: 0.60, Amadeirados: 0.85, Adocicados: 0.70,
+  },
+  cocktail: {
+    Base: 0.80, Cítricos: 1.60, Especiarias: 0.95, Raízes: 0.85,
+    Ervas: 1.10, Flores: 1.40, Frutas: 2.20, Amadeirados: 0.90, Adocicados: 1.30,
+  },
+};
+
+// Compostos que a destilação REMOVE ou REDUZ significativamente (ponto ebulição alto / não voláteis)
+const DISTILLATION_REMOVED = new Set([
+  "Ácido cítrico","Ácido málico","Ácido acético","Antocianinas","Genciopicrina",
+  "Amarogentina","Quinina","Quinidina","Cinconina","Cinconidina","Quinotoxina",
+  "Glicirrizina","Liquiritigenina","Isoliquiritigenina","Taninos","Catuabinas",
+  "Cafeína","Ácido clorogênico","Cumarina","Safranal oxide","Piperina","Furaneol",
+]);
+
+// ─── BASE DE DADOS ─────────────────────────────────────────────────────────────
+const BOTANICALS_DB = {
+  "Zimbro":                  { icon:"🫐", category:"Base",        compounds:[{name:"α-Pineno",conc:42.0,aroma:"Resinoso",min:0.06,max:0.60},{name:"Sabineno",conc:18.0,aroma:"Amadeirado",min:0.04,max:0.40},{name:"β-Mirceno",conc:8.0,aroma:"Terroso",min:0.015,max:0.15},{name:"Limoneno",conc:6.0,aroma:"Cítrico",min:0.01,max:0.10},{name:"Terpinen-4-ol",conc:5.0,aroma:"Amadeirado",min:0.035,max:0.35},{name:"β-Cariofileno",conc:4.5,aroma:"Amadeirado",min:0.06,max:0.50},{name:"γ-Terpineno",conc:3.0,aroma:"Herbáceo",min:0.15,max:0.80}]},
+  "Coentro (semente)":       { icon:"🌾", category:"Especiarias", compounds:[{name:"Linalol",conc:68.0,aroma:"Floral",min:0.006,max:0.10},{name:"α-Pineno",conc:5.0,aroma:"Resinoso",min:0.06,max:0.60},{name:"γ-Terpineno",conc:4.5,aroma:"Herbáceo",min:0.15,max:0.80},{name:"Geraniol",conc:3.5,aroma:"Floral",min:0.004,max:0.07},{name:"Canfora",conc:3.0,aroma:"Mentolado",min:0.015,max:0.20}]},
+  "Raíz de Angélica":        { icon:"🌱", category:"Raízes",      compounds:[{name:"α-Fellandreno",conc:22.0,aroma:"Herbáceo",min:0.03,max:0.30},{name:"β-Fellandreno",conc:18.0,aroma:"Herbáceo",min:0.04,max:0.40},{name:"Limoneno",conc:10.0,aroma:"Cítrico",min:0.01,max:0.10},{name:"Ostol",conc:1.5,aroma:"Almiscarado",min:0.05,max:0.50},{name:"β-Mirceno",conc:8.0,aroma:"Terroso",min:0.015,max:0.15},{name:"Pentadecanolida",conc:0.8,aroma:"Almiscarado",min:0.001,max:0.02}]},
+  "Casca de Angélica":       { icon:"🌿", category:"Raízes",      compounds:[{name:"α-Pineno",conc:15.0,aroma:"Resinoso",min:0.06,max:0.60},{name:"Limoneno",conc:12.0,aroma:"Cítrico",min:0.01,max:0.10},{name:"β-Fellandreno",conc:10.0,aroma:"Herbáceo",min:0.04,max:0.40},{name:"Ostol",conc:2.0,aroma:"Almiscarado",min:0.05,max:0.50},{name:"Imperatorina",conc:1.5,aroma:"Almiscarado",min:0.04,max:0.40}]},
+  "Limão Taiti (casca)":     { icon:"🍋", category:"Cítricos",    compounds:[{name:"Limoneno",conc:65.0,aroma:"Cítrico",min:0.01,max:0.10},{name:"β-Pineno",conc:8.5,aroma:"Amadeirado",min:0.10,max:1.00},{name:"γ-Terpineno",conc:7.0,aroma:"Herbáceo",min:0.15,max:0.80},{name:"Citral",conc:3.5,aroma:"Limão",min:0.03,max:0.40},{name:"Linalol",conc:1.2,aroma:"Floral",min:0.006,max:0.10}]},
+  "Limão (suco)":            { icon:"🍋", category:"Frutas",      compounds:[{name:"Limoneno",conc:65.0,aroma:"Cítrico",min:0.01,max:0.10},{name:"β-Pineno",conc:12.0,aroma:"Amadeirado",min:0.10,max:1.00},{name:"γ-Terpineno",conc:8.0,aroma:"Herbáceo",min:0.15,max:0.80},{name:"Citral",conc:3.0,aroma:"Limão",min:0.03,max:0.40},{name:"Linalol",conc:1.0,aroma:"Floral",min:0.006,max:0.10},{name:"Ácido cítrico",conc:6.0,aroma:"Ácido",min:0.20,max:2.00}]},
+  "Abacaxi (suco)":          { icon:"🍍", category:"Frutas",      compounds:[{name:"Etil butanoato",conc:15.0,aroma:"Frutado",min:0.0002,max:0.01},{name:"Etil hexanoato",conc:8.0,aroma:"Frutado",min:0.0001,max:0.005},{name:"Etil 3-metilbutanoato",conc:5.0,aroma:"Frutado",min:0.00002,max:0.002},{name:"Hexanal",conc:2.0,aroma:"Verde",min:0.005,max:0.05},{name:"Linalol",conc:1.0,aroma:"Floral",min:0.006,max:0.10},{name:"Ácido cítrico",conc:4.0,aroma:"Ácido",min:0.20,max:2.00}]},
+  "Limão Siciliano (casca)": { icon:"🍋", category:"Cítricos",    compounds:[{name:"Limoneno",conc:70.0,aroma:"Cítrico",min:0.01,max:0.10},{name:"Citral",conc:6.5,aroma:"Limão",min:0.03,max:0.40},{name:"β-Pineno",conc:5.5,aroma:"Amadeirado",min:0.10,max:1.00},{name:"Linalol",conc:3.0,aroma:"Floral",min:0.006,max:0.10},{name:"Neral",conc:2.5,aroma:"Limão",min:0.04,max:0.50}]},
+  "Laranja Doce (casca)":    { icon:"🍊", category:"Cítricos",    compounds:[{name:"Limoneno",conc:92.0,aroma:"Cítrico",min:0.01,max:0.10},{name:"Mirceno",conc:1.8,aroma:"Terroso",min:0.015,max:0.15},{name:"Linalol",conc:0.5,aroma:"Floral",min:0.006,max:0.10},{name:"Decanal",conc:0.4,aroma:"Cítrico",min:0.0002,max:0.002},{name:"Octanal",conc:0.3,aroma:"Frutado",min:0.0007,max:0.007}]},
+  "Laranja (suco)":          { icon:"🍊", category:"Frutas",      compounds:[{name:"Limoneno",conc:90.0,aroma:"Cítrico",min:0.01,max:0.10},{name:"Mirceno",conc:2.0,aroma:"Terroso",min:0.015,max:0.15},{name:"Octanal",conc:1.5,aroma:"Cítrico",min:0.0007,max:0.007},{name:"Decanal",conc:1.0,aroma:"Cítrico",min:0.0002,max:0.002},{name:"Linalol",conc:0.8,aroma:"Floral",min:0.006,max:0.10},{name:"Ácido cítrico",conc:3.5,aroma:"Ácido",min:0.20,max:2.00}]},
+  "Laranja Bahia (casca)":   { icon:"🍊", category:"Cítricos",    compounds:[{name:"Limoneno",conc:90.0,aroma:"Cítrico",min:0.01,max:0.10},{name:"Mirceno",conc:2.0,aroma:"Terroso",min:0.015,max:0.15},{name:"Linalol",conc:0.6,aroma:"Floral",min:0.006,max:0.10},{name:"Decanal",conc:0.5,aroma:"Cítrico",min:0.0002,max:0.002},{name:"Octanal",conc:0.4,aroma:"Frutado",min:0.0007,max:0.007}]},
+  "Laranja Amarga (casca)":  { icon:"🟠", category:"Cítricos",    compounds:[{name:"Limoneno",conc:85.0,aroma:"Cítrico",min:0.01,max:0.10},{name:"Mirceno",conc:2.5,aroma:"Terroso",min:0.015,max:0.15},{name:"Linalol",conc:2.0,aroma:"Floral",min:0.006,max:0.10},{name:"β-Pineno",conc:1.8,aroma:"Amadeirado",min:0.10,max:1.00},{name:"Decanal",conc:0.6,aroma:"Cítrico",min:0.0002,max:0.002},{name:"Nerol",conc:1.0,aroma:"Floral",min:0.005,max:0.08}]},
+  "Grapefruit (casca)":      { icon:"🍈", category:"Cítricos",    compounds:[{name:"Limoneno",conc:88.0,aroma:"Cítrico",min:0.01,max:0.10},{name:"Nootkatona",conc:0.1,aroma:"Grapefruit",min:0.000001,max:0.00002},{name:"β-Mirceno",conc:2.0,aroma:"Terroso",min:0.015,max:0.15},{name:"Linalol",conc:1.5,aroma:"Floral",min:0.006,max:0.10},{name:"Decanal",conc:0.3,aroma:"Cítrico",min:0.0002,max:0.002}]},
+  "Yuzu (casca)":            { icon:"🍋", category:"Cítricos",    compounds:[{name:"Limoneno",conc:65.0,aroma:"Cítrico",min:0.01,max:0.10},{name:"γ-Terpineno",conc:15.0,aroma:"Herbáceo",min:0.15,max:0.80},{name:"β-Mirceno",conc:5.0,aroma:"Terroso",min:0.015,max:0.15},{name:"Linalol",conc:3.0,aroma:"Floral",min:0.006,max:0.10},{name:"Yuzu-lactona",conc:0.4,aroma:"Frutado",min:0.001,max:0.01}]},
+  "Bergamota (casca)":       { icon:"🫛", category:"Cítricos",    compounds:[{name:"Limoneno",conc:40.0,aroma:"Cítrico",min:0.01,max:0.10},{name:"Linalool acetato",conc:28.0,aroma:"Floral",min:0.003,max:0.06},{name:"Linalol",conc:12.0,aroma:"Floral",min:0.006,max:0.10},{name:"γ-Terpineno",conc:7.0,aroma:"Herbáceo",min:0.15,max:0.80},{name:"β-Pineno",conc:5.5,aroma:"Amadeirado",min:0.10,max:1.00}]},
+  "Limão-Caviar":            { icon:"🍋", category:"Cítricos",    compounds:[{name:"Limoneno",conc:75.0,aroma:"Cítrico",min:0.01,max:0.10},{name:"β-Pineno",conc:7.0,aroma:"Amadeirado",min:0.10,max:1.00},{name:"γ-Terpineno",conc:5.0,aroma:"Herbáceo",min:0.15,max:0.80},{name:"Geranial",conc:2.0,aroma:"Limão",min:0.02,max:0.30},{name:"Linalol",conc:2.5,aroma:"Floral",min:0.006,max:0.10}]},
+  "Canela (casca)":          { icon:"🪵", category:"Especiarias", compounds:[{name:"Cinamaldeído",conc:65.0,aroma:"Especiado",min:0.001,max:0.05},{name:"Eugenol",conc:5.0,aroma:"Cravo",min:0.006,max:0.10},{name:"Linalol",conc:3.0,aroma:"Floral",min:0.006,max:0.10},{name:"β-Cariofileno",conc:2.5,aroma:"Amadeirado",min:0.06,max:0.50},{name:"Acetato cinam.",conc:1.5,aroma:"Especiado",min:0.002,max:0.08}]},
+  "Cravo":                   { icon:"🌸", category:"Especiarias", compounds:[{name:"Eugenol",conc:75.0,aroma:"Cravo",min:0.006,max:0.10},{name:"Acetato eugenol",conc:10.0,aroma:"Cravo",min:0.005,max:0.08},{name:"β-Cariofileno",conc:8.0,aroma:"Amadeirado",min:0.06,max:0.50},{name:"α-Humuleno",conc:1.5,aroma:"Amadeirado",min:0.08,max:0.70},{name:"Metil eugenol",conc:0.5,aroma:"Especiado",min:0.003,max:0.05}]},
+  "Cardamomo":               { icon:"🫘", category:"Especiarias", compounds:[{name:"1,8-Cineol",conc:30.0,aroma:"Mentolado",min:0.002,max:0.05},{name:"α-Terpinilo ac.",conc:32.0,aroma:"Floral",min:0.003,max:0.06},{name:"Linalol",conc:5.0,aroma:"Floral",min:0.006,max:0.10},{name:"α-Terpineol",conc:3.0,aroma:"Floral",min:0.033,max:0.30},{name:"Sabineno",conc:4.0,aroma:"Amadeirado",min:0.04,max:0.40}]},
+  "Pimenta Preta":           { icon:"⚫", category:"Especiarias", compounds:[{name:"β-Cariofileno",conc:22.0,aroma:"Amadeirado",min:0.06,max:0.50},{name:"Limoneno",conc:16.0,aroma:"Cítrico",min:0.01,max:0.10},{name:"β-Pineno",conc:10.0,aroma:"Amadeirado",min:0.10,max:1.00},{name:"Sabineno",conc:8.0,aroma:"Amadeirado",min:0.04,max:0.40},{name:"Piperina",conc:5.0,aroma:"Picante",min:0.20,max:2.00}]},
+  "Pimenta Rosa":            { icon:"🎀", category:"Especiarias", compounds:[{name:"α-Fellandreno",conc:25.0,aroma:"Herbáceo",min:0.03,max:0.30},{name:"β-Mirceno",conc:15.0,aroma:"Terroso",min:0.015,max:0.15},{name:"Limoneno",conc:12.0,aroma:"Cítrico",min:0.01,max:0.10},{name:"Linalol",conc:5.0,aroma:"Floral",min:0.006,max:0.10},{name:"β-Cariofileno",conc:8.0,aroma:"Amadeirado",min:0.06,max:0.50}]},
+  "Pimenta da Jamaica":      { icon:"🌶", category:"Especiarias", compounds:[{name:"Eugenol",conc:65.0,aroma:"Cravo",min:0.006,max:0.10},{name:"Metil eugenol",conc:8.0,aroma:"Especiado",min:0.003,max:0.05},{name:"β-Cariofileno",conc:6.0,aroma:"Amadeirado",min:0.06,max:0.50},{name:"1,8-Cineol",conc:5.0,aroma:"Mentolado",min:0.002,max:0.05},{name:"α-Terpineol",conc:3.0,aroma:"Floral",min:0.033,max:0.30}]},
+  "Noz-Moscada":             { icon:"🟤", category:"Especiarias", compounds:[{name:"Sabineno",conc:32.0,aroma:"Amadeirado",min:0.04,max:0.40},{name:"α-Pineno",conc:16.0,aroma:"Resinoso",min:0.06,max:0.60},{name:"Miristicina",conc:6.0,aroma:"Especiado",min:0.05,max:0.50},{name:"β-Pineno",conc:8.0,aroma:"Amadeirado",min:0.10,max:1.00},{name:"Elemicina",conc:3.5,aroma:"Especiado",min:0.06,max:0.60}]},
+  "Açafrão":                 { icon:"🌼", category:"Especiarias", compounds:[{name:"Safranal",conc:3.5,aroma:"Especiado",min:0.001,max:0.01},{name:"Isophorone",conc:1.0,aroma:"Terroso",min:0.002,max:0.02},{name:"β-Ionona",conc:0.5,aroma:"Floral",min:0.00007,max:0.002},{name:"Safranal oxide",conc:0.3,aroma:"Especiado",min:0.0005,max:0.01},{name:"2,6,6-trimetilciclohex.",conc:0.4,aroma:"Especiado",min:0.001,max:0.02}]},
+  "Anis Estrelado":          { icon:"⭐", category:"Especiarias", compounds:[{name:"Anetol",conc:85.0,aroma:"Anis",min:0.001,max:0.02},{name:"Fenchona",conc:3.0,aroma:"Mentolado",min:0.003,max:0.06},{name:"Limoneno",conc:2.5,aroma:"Cítrico",min:0.01,max:0.10},{name:"Linalol",conc:1.5,aroma:"Floral",min:0.006,max:0.10},{name:"α-Fellandreno",conc:1.0,aroma:"Herbáceo",min:0.03,max:0.30}]},
+  "Erva-Doce (semente)":     { icon:"🌾", category:"Especiarias", compounds:[{name:"Anetol",conc:80.0,aroma:"Anis",min:0.001,max:0.02},{name:"Fenchona",conc:8.0,aroma:"Mentolado",min:0.003,max:0.06},{name:"Estragol",conc:3.5,aroma:"Herbáceo",min:0.02,max:0.20},{name:"Limoneno",conc:2.0,aroma:"Cítrico",min:0.01,max:0.10},{name:"α-Pineno",conc:1.5,aroma:"Resinoso",min:0.06,max:0.60}]},
+  "Gengibre":                { icon:"🫚", category:"Raízes",      compounds:[{name:"Zingibereno",conc:30.0,aroma:"Especiado",min:0.05,max:0.50},{name:"β-Sesquiphellandrene",conc:12.0,aroma:"Herbáceo",min:0.04,max:0.40},{name:"6-Gingerol",conc:4.0,aroma:"Picante",min:0.05,max:0.50},{name:"1,8-Cineol",conc:2.5,aroma:"Mentolado",min:0.002,max:0.05},{name:"Linalol",conc:2.0,aroma:"Floral",min:0.006,max:0.10}]},
+  "Galanga":                 { icon:"🌿", category:"Raízes",      compounds:[{name:"1,8-Cineol",conc:30.0,aroma:"Mentolado",min:0.002,max:0.05},{name:"α-Pineno",conc:20.0,aroma:"Resinoso",min:0.06,max:0.60},{name:"β-Pineno",conc:15.0,aroma:"Amadeirado",min:0.10,max:1.00},{name:"β-Cariofileno",conc:8.0,aroma:"Amadeirado",min:0.06,max:0.50},{name:"α-Terpineol",conc:6.0,aroma:"Floral",min:0.033,max:0.30}]},
+  "Cúrcuma":                 { icon:"🟡", category:"Raízes",      compounds:[{name:"Ar-turmerona",conc:25.0,aroma:"Especiado",min:0.03,max:0.30},{name:"Turmerona",conc:20.0,aroma:"Especiado",min:0.04,max:0.40},{name:"Zingibereno",conc:15.0,aroma:"Especiado",min:0.05,max:0.50},{name:"β-Sesquiphellandrene",conc:8.0,aroma:"Terroso",min:0.04,max:0.40},{name:"Curlone",conc:6.0,aroma:"Especiado",min:0.03,max:0.30}]},
+  "Alcaçuz (raíz)":          { icon:"🟫", category:"Raízes",      compounds:[{name:"Glicirrizina",conc:6.0,aroma:"Adocicado",min:0.02,max:0.20},{name:"Liquiritigenina",conc:2.0,aroma:"Adocicado",min:0.01,max:0.10},{name:"Isoliquiritigenina",conc:1.5,aroma:"Adocicado",min:0.01,max:0.10},{name:"Cumarina",conc:1.0,aroma:"Adocicado",min:0.001,max:0.02},{name:"β-Cariofileno",conc:3.0,aroma:"Amadeirado",min:0.06,max:0.50}]},
+  "Raíz de Orris":           { icon:"💜", category:"Raízes",      compounds:[{name:"α-Irone",conc:0.15,aroma:"Violeta",min:0.00002,max:0.0005},{name:"β-Irone",conc:0.10,aroma:"Violeta",min:0.00002,max:0.0005},{name:"γ-Irone",conc:0.05,aroma:"Violeta",min:0.00002,max:0.0005},{name:"Geraniol",conc:1.0,aroma:"Floral",min:0.004,max:0.07},{name:"Linalol",conc:0.5,aroma:"Floral",min:0.006,max:0.10}]},
+  "Raíz de Geniana":         { icon:"🌱", category:"Raízes",      compounds:[{name:"Genciopicrina",conc:2.0,aroma:"Amargo",min:0.05,max:0.50},{name:"Amarogentina",conc:0.05,aroma:"Amargo",min:0.00001,max:0.0003},{name:"Xantona",conc:0.5,aroma:"Terroso",min:0.10,max:1.00},{name:"Swertiamarina",conc:1.0,aroma:"Amargo",min:0.02,max:0.20},{name:"Linalol",conc:0.5,aroma:"Floral",min:0.006,max:0.10}]},
+  "Quina (casca)":           { icon:"🌿", category:"Raízes",      compounds:[{name:"Quinina",conc:0.3,aroma:"Amargo",min:0.008,max:0.10},{name:"Quinidina",conc:0.2,aroma:"Amargo",min:0.008,max:0.10},{name:"Cinconina",conc:0.15,aroma:"Amargo",min:0.01,max:0.15},{name:"Cinconidina",conc:0.1,aroma:"Amargo",min:0.01,max:0.15},{name:"Quinotoxina",conc:0.05,aroma:"Amargo",min:0.005,max:0.08}]},
+  "Tomilho":                 { icon:"🌿", category:"Ervas",       compounds:[{name:"Timol",conc:45.0,aroma:"Herbáceo",min:0.001,max:0.04},{name:"Carvacrol",conc:15.0,aroma:"Especiado",min:0.002,max:0.05},{name:"p-Cimeno",conc:12.0,aroma:"Cítrico",min:0.05,max:0.50},{name:"Linalol",conc:5.0,aroma:"Floral",min:0.006,max:0.10},{name:"γ-Terpineno",conc:8.0,aroma:"Herbáceo",min:0.15,max:0.80}]},
+  "Manjericão":              { icon:"🌿", category:"Ervas",       compounds:[{name:"Linalol",conc:55.0,aroma:"Floral",min:0.006,max:0.10},{name:"Eugenol",conc:12.0,aroma:"Cravo",min:0.006,max:0.10},{name:"Metil chavicol",conc:8.0,aroma:"Herbáceo",min:0.02,max:0.20},{name:"1,8-Cineol",conc:5.0,aroma:"Mentolado",min:0.002,max:0.05},{name:"β-Ocimeno",conc:4.0,aroma:"Herbáceo",min:0.03,max:0.30}]},
+  "Alecrim":                 { icon:"🌿", category:"Ervas",       compounds:[{name:"1,8-Cineol",conc:40.0,aroma:"Mentolado",min:0.002,max:0.05},{name:"α-Pineno",conc:18.0,aroma:"Resinoso",min:0.06,max:0.60},{name:"Canfora",conc:12.0,aroma:"Mentolado",min:0.015,max:0.20},{name:"β-Pineno",conc:5.5,aroma:"Amadeirado",min:0.10,max:1.00},{name:"Borneol",conc:4.0,aroma:"Mentolado",min:0.005,max:0.08}]},
+  "Lavanda":                 { icon:"💜", category:"Ervas",       compounds:[{name:"Linalol",conc:38.0,aroma:"Floral",min:0.006,max:0.10},{name:"Acetato linalol",conc:30.0,aroma:"Floral",min:0.003,max:0.06},{name:"β-Ocimeno",conc:5.0,aroma:"Herbáceo",min:0.03,max:0.30},{name:"Terpinen-4-ol",conc:4.0,aroma:"Amadeirado",min:0.035,max:0.35},{name:"β-Cariofileno",conc:3.0,aroma:"Amadeirado",min:0.06,max:0.50}]},
+  "Hortelã-Pimenta":         { icon:"🌿", category:"Ervas",       compounds:[{name:"Mentol",conc:40.0,aroma:"Mentolado",min:0.001,max:0.03},{name:"Mentona",conc:20.0,aroma:"Mentolado",min:0.006,max:0.10},{name:"1,8-Cineol",conc:5.0,aroma:"Mentolado",min:0.002,max:0.05},{name:"Mentofurano",conc:3.5,aroma:"Herbáceo",min:0.004,max:0.06},{name:"Limoneno",conc:3.0,aroma:"Cítrico",min:0.01,max:0.10}]},
+  "Erva-Cidreira":           { icon:"🌿", category:"Ervas",       compounds:[{name:"Citral",conc:35.0,aroma:"Limão",min:0.03,max:0.40},{name:"Citronelal",conc:20.0,aroma:"Cítrico",min:0.01,max:0.15},{name:"Geraniol",conc:10.0,aroma:"Floral",min:0.004,max:0.07},{name:"β-Cariofileno",conc:6.0,aroma:"Amadeirado",min:0.06,max:0.50},{name:"Linalol",conc:3.0,aroma:"Floral",min:0.006,max:0.10}]},
+  "Sálvia":                  { icon:"🌿", category:"Ervas",       compounds:[{name:"1,8-Cineol",conc:12.0,aroma:"Mentolado",min:0.002,max:0.05},{name:"α-Tujona",conc:28.0,aroma:"Herbáceo",min:0.01,max:0.15},{name:"Canfora",conc:18.0,aroma:"Mentolado",min:0.015,max:0.20},{name:"α-Humuleno",conc:5.0,aroma:"Amadeirado",min:0.08,max:0.70},{name:"Borneol",conc:5.0,aroma:"Mentolado",min:0.005,max:0.08}]},
+  "Absinto (Artemisia)":     { icon:"🌿", category:"Ervas",       compounds:[{name:"α-Tujona",conc:38.0,aroma:"Herbáceo",min:0.01,max:0.15},{name:"β-Tujona",conc:8.0,aroma:"Herbáceo",min:0.01,max:0.15},{name:"Azuleno",conc:5.0,aroma:"Terroso",min:0.05,max:0.50},{name:"Canfora",conc:6.0,aroma:"Mentolado",min:0.015,max:0.20},{name:"Bisabolol",conc:3.0,aroma:"Floral",min:0.02,max:0.20}]},
+  "Verbena":                 { icon:"🌿", category:"Ervas",       compounds:[{name:"Citral",conc:32.0,aroma:"Limão",min:0.03,max:0.40},{name:"Limoneno",conc:18.0,aroma:"Cítrico",min:0.01,max:0.10},{name:"Geraniol",conc:8.0,aroma:"Floral",min:0.004,max:0.07},{name:"Nerol",conc:5.0,aroma:"Floral",min:0.005,max:0.08},{name:"β-Cariofileno",conc:4.0,aroma:"Amadeirado",min:0.06,max:0.50}]},
+  "Capim-Limão":             { icon:"🌾", category:"Ervas",       compounds:[{name:"Citral",conc:75.0,aroma:"Limão",min:0.03,max:0.40},{name:"Geraniol",conc:5.0,aroma:"Floral",min:0.004,max:0.07},{name:"β-Mirceno",conc:8.0,aroma:"Terroso",min:0.015,max:0.15},{name:"Nerol",conc:3.0,aroma:"Floral",min:0.005,max:0.08},{name:"β-Ocimeno",conc:2.0,aroma:"Herbáceo",min:0.03,max:0.30}]},
+  "Erva-Mate":               { icon:"🧉", category:"Ervas",       compounds:[{name:"Cafeína",conc:1.5,aroma:"Amargo",min:0.05,max:0.20},{name:"Ácido clorogênico",conc:5.0,aroma:"Amargo",min:0.05,max:0.50},{name:"Linalol",conc:1.0,aroma:"Floral",min:0.006,max:0.10},{name:"Hexanal",conc:0.5,aroma:"Herbáceo",min:0.005,max:0.05},{name:"β-Cariofileno",conc:4.0,aroma:"Amadeirado",min:0.06,max:0.50}]},
+  "Lúpulo":                  { icon:"🍺", category:"Ervas",       compounds:[{name:"Mirceno",conc:35.0,aroma:"Terroso",min:0.015,max:0.15},{name:"Humulona",conc:8.0,aroma:"Resinoso",min:0.05,max:0.50},{name:"β-Cariofileno",conc:10.0,aroma:"Amadeirado",min:0.06,max:0.50},{name:"Linalol",conc:5.0,aroma:"Floral",min:0.006,max:0.10},{name:"Geraniol",conc:4.0,aroma:"Floral",min:0.004,max:0.07}]},
+  "Hibisco":                 { icon:"🌺", category:"Flores",      compounds:[{name:"Ácido cítrico",conc:15.0,aroma:"Ácido",min:0.20,max:2.00},{name:"Antocianinas",conc:1.2,aroma:"Floral",min:0.10,max:1.00},{name:"Linalol",conc:0.8,aroma:"Floral",min:0.006,max:0.10},{name:"Geraniol",conc:0.6,aroma:"Floral",min:0.004,max:0.07},{name:"Ácido málico",conc:12.0,aroma:"Frutado",min:0.15,max:1.50}]},
+  "Rosa (pétalas)":          { icon:"🌹", category:"Flores",      compounds:[{name:"Citronelol",conc:35.0,aroma:"Floral",min:0.003,max:0.07},{name:"Geraniol",conc:15.0,aroma:"Floral",min:0.004,max:0.07},{name:"2-Feniletanol",conc:12.0,aroma:"Floral",min:0.001,max:0.02},{name:"Nerol",conc:8.0,aroma:"Floral",min:0.005,max:0.08},{name:"Linalol",conc:2.5,aroma:"Floral",min:0.006,max:0.10}]},
+  "Flor de Sabugueiro":      { icon:"🌸", category:"Flores",      compounds:[{name:"α-Terpineol",conc:12.0,aroma:"Floral",min:0.033,max:0.30},{name:"Hotrienol",conc:8.0,aroma:"Floral",min:0.002,max:0.03},{name:"Linalol",conc:6.0,aroma:"Floral",min:0.006,max:0.10},{name:"Nonanal",conc:5.0,aroma:"Floral",min:0.001,max:0.01},{name:"β-Cariofileno",conc:4.0,aroma:"Amadeirado",min:0.06,max:0.50}]},
+  "Camomila":                { icon:"🌼", category:"Flores",      compounds:[{name:"α-Bisabolol",conc:20.0,aroma:"Floral",min:0.02,max:0.20},{name:"Azuleno",conc:5.0,aroma:"Terroso",min:0.05,max:0.50},{name:"β-Farneseno",conc:10.0,aroma:"Floral",min:0.03,max:0.30},{name:"Espiro-éter",conc:8.0,aroma:"Herbáceo",min:0.04,max:0.40},{name:"cis-β-Ocimeno",conc:6.0,aroma:"Herbáceo",min:0.03,max:0.30}]},
+  "Jasmim":                  { icon:"🌸", category:"Flores",      compounds:[{name:"Benzil acetato",conc:22.0,aroma:"Floral",min:0.003,max:0.05},{name:"Linalol",conc:15.0,aroma:"Floral",min:0.006,max:0.10},{name:"Jasmona",conc:3.0,aroma:"Floral",min:0.001,max:0.02},{name:"Indol",conc:2.5,aroma:"Floral",min:0.0001,max:0.003},{name:"Benzil benzoato",conc:8.0,aroma:"Floral",min:0.001,max:0.01}]},
+  "Violeta":                 { icon:"🌸", category:"Flores",      compounds:[{name:"α-Ionona",conc:1.5,aroma:"Violeta",min:0.0001,max:0.002},{name:"β-Ionona",conc:0.8,aroma:"Violeta",min:0.00007,max:0.002},{name:"2-Feniletanol",conc:5.0,aroma:"Floral",min:0.001,max:0.02},{name:"Linalol",conc:3.0,aroma:"Floral",min:0.006,max:0.10},{name:"Nonanal",conc:2.0,aroma:"Floral",min:0.001,max:0.01}]},
+  "Baga de Sabugueiro":      { icon:"🫐", category:"Frutas",      compounds:[{name:"Ácido cítrico",conc:10.0,aroma:"Ácido",min:0.20,max:2.00},{name:"Linalol",conc:1.0,aroma:"Floral",min:0.006,max:0.10},{name:"Geraniol",conc:0.8,aroma:"Floral",min:0.004,max:0.07},{name:"β-Cariofileno",conc:3.0,aroma:"Amadeirado",min:0.06,max:0.50},{name:"α-Farneseno",conc:2.0,aroma:"Frutado",min:0.02,max:0.20}]},
+  "Groselha Preta":          { icon:"🫐", category:"Frutas",      compounds:[{name:"4-MMP",conc:0.01,aroma:"Frutado",min:0.000001,max:0.00002},{name:"δ-3-Careno",conc:8.0,aroma:"Resinoso",min:0.02,max:0.20},{name:"β-Cariofileno",conc:6.0,aroma:"Amadeirado",min:0.06,max:0.50},{name:"Linalol",conc:2.0,aroma:"Floral",min:0.006,max:0.10},{name:"Geraniol",conc:1.5,aroma:"Floral",min:0.004,max:0.07}]},
+  "Framboesa":               { icon:"🍇", category:"Frutas",      compounds:[{name:"Framboesona",conc:0.03,aroma:"Frutado",min:0.000001,max:0.00003},{name:"Geraniol",conc:1.0,aroma:"Floral",min:0.004,max:0.07},{name:"Linalol",conc:1.5,aroma:"Floral",min:0.006,max:0.10},{name:"Diacetil",conc:0.05,aroma:"Frutado",min:0.00015,max:0.003},{name:"α-Terpineol",conc:1.0,aroma:"Floral",min:0.033,max:0.30}]},
+  "Mirtilo":                 { icon:"🫐", category:"Frutas",      compounds:[{name:"Linalol",conc:1.5,aroma:"Floral",min:0.006,max:0.10},{name:"Geraniol",conc:1.0,aroma:"Floral",min:0.004,max:0.07},{name:"Ácido cítrico",conc:2.0,aroma:"Ácido",min:0.20,max:2.00},{name:"Hexanal",conc:0.3,aroma:"Herbáceo",min:0.005,max:0.05},{name:"2-Heptanona",conc:0.2,aroma:"Frutado",min:0.003,max:0.05}]},
+  "Maracujá":                { icon:"🌼", category:"Frutas",      compounds:[{name:"Etil butanoato",conc:20.0,aroma:"Frutado",min:0.0002,max:0.01},{name:"Hexil butanoato",conc:6.0,aroma:"Frutado",min:0.0001,max:0.005},{name:"Linalol",conc:2.0,aroma:"Floral",min:0.006,max:0.10},{name:"β-Ionona",conc:0.5,aroma:"Floral",min:0.00007,max:0.002},{name:"Hexanal",conc:1.0,aroma:"Verde",min:0.005,max:0.05},{name:"Ácido cítrico",conc:2.5,aroma:"Ácido",min:0.20,max:2.00}]},
+  "Cambuci":                 { icon:"🍈", category:"Frutas",      compounds:[{name:"Limoneno",conc:25.0,aroma:"Cítrico",min:0.01,max:0.10},{name:"Ácido cítrico",conc:5.0,aroma:"Ácido",min:0.20,max:2.00},{name:"β-Pineno",conc:10.0,aroma:"Amadeirado",min:0.10,max:1.00},{name:"Linalol",conc:3.0,aroma:"Floral",min:0.006,max:0.10},{name:"γ-Terpineno",conc:8.0,aroma:"Herbáceo",min:0.15,max:0.80}]},
+  "Lichia":                  { icon:"🍒", category:"Frutas",      compounds:[{name:"Geraniol",conc:30.0,aroma:"Floral",min:0.004,max:0.07},{name:"Citronelol",conc:8.0,aroma:"Floral",min:0.003,max:0.07},{name:"Nerol",conc:10.0,aroma:"Floral",min:0.005,max:0.08},{name:"Linalol",conc:8.0,aroma:"Floral",min:0.006,max:0.10},{name:"β-Cariofileno",conc:5.0,aroma:"Amadeirado",min:0.06,max:0.50}]},
+  "Pêssego":                 { icon:"🍑", category:"Frutas",      compounds:[{name:"γ-Decalactona",conc:0.5,aroma:"Frutado",min:0.0001,max:0.002},{name:"γ-Undecalactona",conc:0.3,aroma:"Frutado",min:0.0001,max:0.002},{name:"Benzaldeído",conc:0.2,aroma:"Amendoado",min:0.001,max:0.02},{name:"Linalol",conc:0.4,aroma:"Floral",min:0.006,max:0.10},{name:"Hexanal",conc:0.3,aroma:"Herbáceo",min:0.005,max:0.05}]},
+  "Pepino":                  { icon:"🥒", category:"Frutas",      compounds:[{name:"2-Nonenal",conc:0.08,aroma:"Frutado",min:0.00001,max:0.001},{name:"2,6-Nonadienal",conc:0.05,aroma:"Frutado",min:0.00001,max:0.001},{name:"Hexanal",conc:0.15,aroma:"Herbáceo",min:0.005,max:0.05},{name:"Linalol",conc:0.04,aroma:"Floral",min:0.006,max:0.10},{name:"β-Mirceno",conc:0.06,aroma:"Terroso",min:0.015,max:0.15}]},
+  "Morango":                 { icon:"🍓", category:"Frutas",      compounds:[{name:"Etil butanoato",conc:8.0,aroma:"Frutado",min:0.0002,max:0.01},{name:"Metil butanoato",conc:6.0,aroma:"Frutado",min:0.0002,max:0.01},{name:"Furaneol",conc:4.0,aroma:"Caramelo",min:0.00001,max:0.0005},{name:"Linalol",conc:1.5,aroma:"Floral",min:0.006,max:0.10},{name:"Hexanal",conc:1.0,aroma:"Verde",min:0.005,max:0.05},{name:"Ácido cítrico",conc:0.8,aroma:"Ácido",min:0.20,max:2.00}]},
+  "Manga":                   { icon:"🥭", category:"Frutas",      compounds:[{name:"Mirceno",conc:30.0,aroma:"Frutado",min:0.015,max:0.50},{name:"δ-3-Careno",conc:10.0,aroma:"Resinoso",min:0.01,max:0.20},{name:"Hexanal",conc:5.0,aroma:"Verde",min:0.005,max:0.05},{name:"Linalol",conc:2.0,aroma:"Floral",min:0.006,max:0.10},{name:"Etil butanoato",conc:1.0,aroma:"Frutado",min:0.0002,max:0.01},{name:"Ácido cítrico",conc:1.5,aroma:"Ácido",min:0.20,max:2.00}]},
+  "Banana":                  { icon:"🍌", category:"Frutas",      compounds:[{name:"Acetato de isoamila",conc:40.0,aroma:"Banana",min:0.001,max:0.05},{name:"Butanoato de isoamila",conc:10.0,aroma:"Frutado",min:0.0002,max:0.01},{name:"Acetato de etila",conc:5.0,aroma:"Frutado",min:0.005,max:0.20},{name:"Hexanal",conc:2.0,aroma:"Verde",min:0.005,max:0.05},{name:"Linalol",conc:1.0,aroma:"Floral",min:0.006,max:0.10}]},
+  "Maçã":                    { icon:"🍏", category:"Frutas",      compounds:[{name:"Hexil acetato",conc:25.0,aroma:"Maçã",min:0.0002,max:0.01},{name:"Etil butanoato",conc:10.0,aroma:"Frutado",min:0.0002,max:0.01},{name:"2-Metilbutanol",conc:5.0,aroma:"Alcoólico",min:0.01,max:0.30},{name:"Hexanal",conc:2.0,aroma:"Verde",min:0.005,max:0.05},{name:"Linalol",conc:1.0,aroma:"Floral",min:0.006,max:0.10},{name:"Ácido málico",conc:3.0,aroma:"Ácido",min:0.15,max:1.50}]},
+  "Aroeira (madeira)":       { icon:"🌲", category:"Amadeirados", compounds:[{name:"α-Pineno",conc:30.0,aroma:"Resinoso",min:0.06,max:0.60},{name:"β-Mirceno",conc:18.0,aroma:"Terroso",min:0.015,max:0.15},{name:"Limoneno",conc:10.0,aroma:"Cítrico",min:0.01,max:0.10},{name:"β-Cariofileno",conc:8.0,aroma:"Amadeirado",min:0.06,max:0.50},{name:"α-Terpineol",conc:5.0,aroma:"Floral",min:0.033,max:0.30}]},
+  "Catuaba":                 { icon:"🌰", category:"Amadeirados", compounds:[{name:"Catuabinas",conc:2.5,aroma:"Terroso",min:0.10,max:1.00},{name:"β-Cariofileno",conc:12.0,aroma:"Amadeirado",min:0.06,max:0.50},{name:"α-Pineno",conc:8.0,aroma:"Resinoso",min:0.06,max:0.60},{name:"Taninos",conc:7.0,aroma:"Terroso",min:0.20,max:2.00},{name:"Linalol",conc:3.5,aroma:"Floral",min:0.006,max:0.10}]},
+  "Casca de Carvalho":       { icon:"🌳", category:"Amadeirados", compounds:[{name:"β-Cariofileno",conc:15.0,aroma:"Amadeirado",min:0.06,max:0.50},{name:"Vanilina",conc:1.5,aroma:"Baunilha",min:0.00002,max:0.0006},{name:"Whisky-lactona",conc:1.0,aroma:"Amadeirado",min:0.001,max:0.01},{name:"Eugenol",conc:2.0,aroma:"Cravo",min:0.006,max:0.10},{name:"Taninos",conc:8.0,aroma:"Terroso",min:0.20,max:2.00}]},
+  "Sândalo":                 { icon:"🪵", category:"Amadeirados", compounds:[{name:"α-Santalol",conc:55.0,aroma:"Amadeirado",min:0.01,max:0.10},{name:"β-Santalol",conc:20.0,aroma:"Amadeirado",min:0.015,max:0.15},{name:"Santaleno",conc:5.0,aroma:"Amadeirado",min:0.03,max:0.30},{name:"β-Bisabolol",conc:3.0,aroma:"Floral",min:0.02,max:0.20},{name:"Lanceol",conc:2.0,aroma:"Amadeirado",min:0.02,max:0.20}]},
+  "Cedro":                   { icon:"🌲", category:"Amadeirados", compounds:[{name:"α-Cedreno",conc:28.0,aroma:"Amadeirado",min:0.06,max:0.60},{name:"Cedrol",conc:22.0,aroma:"Amadeirado",min:0.007,max:0.10},{name:"β-Cedreno",conc:10.0,aroma:"Amadeirado",min:0.05,max:0.50},{name:"Tujopseno",conc:8.0,aroma:"Amadeirado",min:0.04,max:0.40},{name:"α-Pineno",conc:5.0,aroma:"Resinoso",min:0.06,max:0.60}]},
+  "Patchouli":               { icon:"🌿", category:"Amadeirados", compounds:[{name:"Patchoulol",conc:35.0,aroma:"Terroso",min:0.01,max:0.10},{name:"α-Patchouleno",conc:18.0,aroma:"Terroso",min:0.03,max:0.30},{name:"Norpatchoulenol",conc:8.0,aroma:"Terroso",min:0.005,max:0.07},{name:"β-Cariofileno",conc:5.0,aroma:"Amadeirado",min:0.06,max:0.50},{name:"α-Bulneseno",conc:12.0,aroma:"Terroso",min:0.04,max:0.40}]},
+  "Baunilha":                { icon:"🫙", category:"Adocicados",  compounds:[{name:"Vanilina",conc:2.0,aroma:"Baunilha",min:0.00002,max:0.0006},{name:"p-Hidroxibenz.",conc:1.0,aroma:"Adocicado",min:0.005,max:0.05},{name:"Guaiacol",conc:0.5,aroma:"Defumado",min:0.0001,max:0.002},{name:"Ácido vanílico",conc:0.8,aroma:"Baunilha",min:0.003,max:0.05},{name:"4-MG",conc:0.3,aroma:"Defumado",min:0.00005,max:0.001}]},
+  "Fava Tonka":              { icon:"🫘", category:"Adocicados",  compounds:[{name:"Cumarina",conc:3.0,aroma:"Adocicado",min:0.001,max:0.02},{name:"Vanilina",conc:0.5,aroma:"Baunilha",min:0.00002,max:0.0006},{name:"Diidrocumarina",conc:0.8,aroma:"Adocicado",min:0.003,max:0.05},{name:"β-Sitosterol",conc:1.0,aroma:"Terroso",min:0.20,max:2.00},{name:"Metil cinam.",conc:0.4,aroma:"Especiado",min:0.002,max:0.04}]},
+  "Cacau (casca)":           { icon:"🍫", category:"Adocicados",  compounds:[{name:"2-Feniletanol",conc:5.0,aroma:"Floral",min:0.001,max:0.02},{name:"Pirazinas",conc:3.0,aroma:"Torrado",min:0.0001,max:0.003},{name:"Ácido acético",conc:8.0,aroma:"Ácido",min:0.20,max:2.00},{name:"Linalol",conc:1.5,aroma:"Floral",min:0.006,max:0.10},{name:"Benzaldeído",conc:1.0,aroma:"Amendoado",min:0.001,max:0.02}]},
+  "Café":                    { icon:"☕", category:"Adocicados",  compounds:[{name:"2-Furfuraldeído",conc:15.0,aroma:"Torrado",min:0.003,max:0.05},{name:"Guaiacol",conc:0.8,aroma:"Defumado",min:0.0001,max:0.002},{name:"4-Etilguaiacol",conc:0.5,aroma:"Defumado",min:0.000025,max:0.0006},{name:"2-Acetilpirazina",conc:0.3,aroma:"Torrado",min:0.0001,max:0.003},{name:"Cafestol",conc:0.8,aroma:"Torrado",min:0.10,max:1.00}]},
+};
+
+const AROMA_CATEGORIES = ["Cítrico","Floral","Herbáceo","Amadeirado","Resinoso","Especiado","Terroso","Frutado","Mentolado","Cravo","Almiscarado","Limão","Ácido","Anis","Baunilha","Adocicado","Defumado","Torrado","Violeta","Amargo","Picante","Grapefruit","Amendoado","Verde","Caramelo","Banana","Maçã","Alcoólico"];
+const AROMA_COLORS = {"Cítrico":"#FFD700","Floral":"#FF69B4","Herbáceo":"#7CFC00","Amadeirado":"#CD853F","Resinoso":"#3CB371","Especiado":"#FF4500","Terroso":"#8B6914","Frutado":"#FF6347","Mentolado":"#40E0D0","Cravo":"#DC143C","Almiscarado":"#DDA0DD","Limão":"#ADFF2F","Ácido":"#FFB347","Anis":"#E0E0FF","Baunilha":"#F5DEB3","Adocicado":"#FFB6C1","Defumado":"#909090","Torrado":"#8B4513","Violeta":"#9400D3","Amargo":"#6B8E23","Picante":"#FF0000","Grapefruit":"#FF7F50","Amendoado":"#DEB887","Verde":"#90EE90","Caramelo":"#C68642","Banana":"#FFE135","Maçã":"#8DB600","Alcoólico":"#B0C4DE"};
+
+// ─── VERSÃO DO BANCO DE DADOS ─────────────────────────────────────────────────
+// Incremente este número a cada atualização de ingredientes para que
+// o app ofereça ao usuário a opção de importar os novos dados.
+const DB_VERSION = "1.0.0";
+const DB_RELEASE_NOTES = "Base inicial: 70 botânicos, 8 categorias, compostos GC-MS da literatura.";
+// Senha do painel admin (pode ser mudada aqui no código)
+const ADMIN_PASSWORD = "ginlab2025";
+
+// ─── CÁLCULO BRIX/pH ──────────────────────────────────────────────────────────
+// Brix → fator de diluição aromática na matrix: açúcares "prendem" voláteis
+// Fórmula: fator = 1 / (1 + brix/100 * 0.8)  → alta densidade = menor volatilidade livre
+function brixFactor(brix) {
+  if (brix === null || brix === undefined) return 1.0;
+  return 1 / (1 + (brix / 100) * 0.8);
+}
+// pH → potencializa aromas ácidos e ésteres em pH baixo; atenua em pH alto
+// fator entre 0.7 e 1.3 centrado em pH 3.5
+function phFactor(ph, aromaType) {
+  if (ph === null || ph === undefined) return 1.0;
+  const acidAromas = new Set(["Ácido","Cítrico","Frutado","Limão","Grapefruit"]);
+  const baseAromas = new Set(["Floral","Baunilha","Adocicado"]);
+  const normalized = Math.max(2.0, Math.min(7.0, ph));
+  // pH 3.5 = neutro para nossos fins (frutas típicas de coquetel)
+  const delta = normalized - 3.5;
+  if (acidAromas.has(aromaType)) return Math.max(0.5, 1.3 - delta * 0.15);
+  if (baseAromas.has(aromaType)) return Math.max(0.7, 0.8 + delta * 0.1);
+  return 1.0;
+}
+
+// ─── RADAR ────────────────────────────────────────────────────────────────────
+function RadarChart({data,size=390}){
+  const active=AROMA_CATEGORIES.filter(a=>(data[a]||0)>0.02);
+  const labels=active.length>=4?active:AROMA_CATEGORIES.slice(0,12);
+  const n=labels.length,cx=size/2,cy=size/2,r=size*0.33,as=(2*Math.PI)/n;
+  const pt=(i,rad)=>({x:cx+rad*Math.sin(i*as-Math.PI/2),y:cy-rad*Math.cos(i*as-Math.PI/2)});
+  const poly=lvl=>labels.map((_,i)=>{const p=pt(i,r*lvl);return`${p.x},${p.y}`;}).join(" ");
+  const dataPoly=labels.map((lbl,i)=>{const v=Math.min(data[lbl]||0,1);const p=pt(i,r*v);return`${p.x},${p.y}`;}).join(" ");
+  return(
+    <svg width={size} height={size} style={{overflow:"visible"}}>
+      <defs><radialGradient id="rg" cx="50%" cy="50%" r="50%"><stop offset="0%" stopColor="rgba(168,224,99,0.22)"/><stop offset="100%" stopColor="rgba(168,224,99,0.04)"/></radialGradient></defs>
+      {[0.2,0.4,0.6,0.8,1.0].map(lvl=><polygon key={lvl} points={poly(lvl)} fill="none" stroke={lvl===1?"rgba(255,255,255,0.14)":"rgba(255,255,255,0.05)"} strokeWidth={lvl===1?1.5:1}/>)}
+      {labels.map((_,i)=>{const o=pt(i,r);return<line key={i} x1={cx} y1={cy} x2={o.x} y2={o.y} stroke="rgba(255,255,255,0.08)" strokeWidth="1"/>;  })}
+      <polygon points={dataPoly} fill="url(#rg)" stroke="#8cd43a" strokeWidth="2.5" strokeLinejoin="round"/>
+      {labels.map((lbl,i)=>{const v=Math.min(data[lbl]||0,1);const p=pt(i,r*v);return<circle key={i} cx={p.x} cy={p.y} r={v>0.05?5:2} fill={AROMA_COLORS[lbl]||"#a8e063"} stroke="#0a160a" strokeWidth="1.5"/>;  })}
+      {labels.map((lbl,i)=>{const p=pt(i,r*1.24);const anchor=p.x<cx-8?"end":p.x>cx+8?"start":"middle";return<text key={i} x={p.x} y={p.y+4} textAnchor={anchor} fontSize="10" fontFamily="'DM Mono',monospace" fill={AROMA_COLORS[lbl]||"#bbb"} fontWeight="600">{lbl}</text>;  })}
+    </svg>
+  );
+}
+
+// ─── ADMIN PANEL ─────────────────────────────────────────────────────────────
+// Gerencia o banco de ingredientes: editar, exportar JSON, importar JSON
+function AdminPanel({customDB, onUpdateDB, onClose}){
+  const [authOk, setAuthOk]   = useState(false);
+  const [pw, setPw]           = useState("");
+  const [pwErr, setPwErr]     = useState(false);
+  const [activeTab, setTab]   = useState("db");       // "db" | "edit" | "import" | "update"
+  const [editBot, setEditBot] = useState(null);       // bot name being edited
+  const [editData, setEditData] = useState(null);     // copy of bot data
+  const [editCmp, setEditCmp] = useState({name:"",conc:"",aroma:"Herbáceo",min:"",max:""});
+  const [importText, setImportText] = useState("");
+  const [importErr, setImportErr]   = useState("");
+  const [importOk, setImportOk]     = useState(false);
+  const [updateUrl, setUpdateUrl]   = useState("");
+  const [updateStatus, setUpdateStatus] = useState("idle"); // idle | loading | ok | err
+  const [updateData, setUpdateData] = useState(null);
+  const [updateMsg, setUpdateMsg]   = useState("");
+
+  // All botanicals = DB + custom overrides
+  const allBots = useMemo(()=>{
+    const all = {...BOTANICALS_DB};
+    Object.entries(customDB||{}).forEach(([n,d])=>{ if(d.botData) all[n] = d.botData; });
+    return all;
+  },[customDB]);
+
+  const tryAuth = () => {
+    if(pw === ADMIN_PASSWORD){ setAuthOk(true); setPwErr(false); }
+    else { setPwErr(true); setPw(""); }
+  };
+
+  // ── Export full DB as JSON ─────────────────────────────────────────────────
+  const exportDB = () => {
+    const payload = {
+      version: DB_VERSION,
+      exportedAt: new Date().toISOString(),
+      botanicals: allBots,
+    };
+    const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `gin-lab-db-v${DB_VERSION}-${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+  };
+
+  // ── Import JSON (merge or replace) ────────────────────────────────────────
+  const doImport = (mode) => {
+    setImportErr(""); setImportOk(false);
+    try {
+      const parsed = JSON.parse(importText);
+      if(!parsed.botanicals || typeof parsed.botanicals !== "object")
+        throw new Error("JSON inválido: chave 'botanicals' não encontrada.");
+      // Validate a sample entry
+      const sample = Object.values(parsed.botanicals)[0];
+      if(!sample?.compounds || !Array.isArray(sample.compounds))
+        throw new Error("Formato incorreto: cada botânico precisa ter 'compounds'.");
+
+      const newCustom = {...(customDB||{})};
+      Object.entries(parsed.botanicals).forEach(([name, data])=>{
+        if(!BOTANICALS_DB[name]){
+          // New custom botanical
+          newCustom[name] = { inStock:false, hasReport:false, compounds:{}, botData: data };
+        } else if(mode === "replace") {
+          // Override existing DB entry via botData overlay
+          newCustom[name] = { ...(newCustom[name]||{}), botData: data };
+        }
+        // mode==="merge": skip existing DB entries
+      });
+      onUpdateDB(newCustom, `Importação JSON (${mode}) — ${Object.keys(parsed.botanicals).length} botânicos. ${parsed.version ? "v"+parsed.version : ""}`);
+      setImportOk(true);
+      setImportText("");
+    } catch(e) {
+      setImportErr(e.message);
+    }
+  };
+
+  // ── Fetch update from URL ──────────────────────────────────────────────────
+  const fetchUpdate = async() => {
+    setUpdateStatus("loading"); setUpdateMsg(""); setUpdateData(null);
+    try {
+      const res = await fetch(updateUrl);
+      if(!res.ok) throw new Error(`HTTP ${res.status}`);
+      const parsed = await res.json();
+      if(!parsed.botanicals) throw new Error("Arquivo não tem chave 'botanicals'");
+      setUpdateData(parsed);
+      setUpdateStatus("ok");
+      setUpdateMsg(`✓ ${Object.keys(parsed.botanicals).length} botânicos encontrados · versão ${parsed.version||"?"}`);
+    } catch(e) {
+      setUpdateStatus("err");
+      setUpdateMsg(`Erro: ${e.message}`);
+    }
+  };
+
+  const applyUpdate = () => {
+    if(!updateData) return;
+    const newCustom = {...(customDB||{})};
+    Object.entries(updateData.botanicals).forEach(([name,data])=>{
+      if(!BOTANICALS_DB[name]){
+        newCustom[name] = { inStock:false, hasReport:false, compounds:{}, botData: data };
+      }
+    });
+    onUpdateDB(newCustom, `Atualização via URL · ${updateData.version||"?"} · ${Object.keys(updateData.botanicals).length} botânicos`);
+    setUpdateStatus("idle"); setUpdateData(null); setUpdateMsg("Aplicado com sucesso ✓");
+  };
+
+  // ── Edit a botanical inline ────────────────────────────────────────────────
+  const startEdit = (name) => {
+    setEditBot(name);
+    setEditData(JSON.parse(JSON.stringify(allBots[name])));
+    setTab("edit");
+  };
+  const saveEdit = () => {
+    if(!editBot||!editData) return;
+    const newCustom = {...(customDB||{})};
+    if(BOTANICALS_DB[editBot]){
+      newCustom[editBot] = { ...(newCustom[editBot]||{}), botData: editData };
+    } else {
+      newCustom[editBot] = { ...(newCustom[editBot]||{}), botData: editData };
+    }
+    onUpdateDB(newCustom, `Edição: ${editBot}`);
+    setEditBot(null); setEditData(null); setTab("db");
+  };
+  const deleteBot = (name) => {
+    if(!window.confirm(`Remover "${name}" do banco custom?`)) return;
+    const newCustom = {...(customDB||{})};
+    delete newCustom[name];
+    onUpdateDB(newCustom, `Remoção: ${name}`);
+  };
+  const addCmpToEdit = () => {
+    if(!editCmp.name||!editData) return;
+    setEditData(p=>({...p, compounds:[...p.compounds, {
+      name:editCmp.name, conc:parseFloat(editCmp.conc)||0,
+      aroma:editCmp.aroma, min:parseFloat(editCmp.min)||0, max:parseFloat(editCmp.max)||0
+    }]}));
+    setEditCmp({name:"",conc:"",aroma:"Herbáceo",min:"",max:""});
+  };
+
+  const inp = (val,onChange,ph,w)=>(
+    <input type="number" value={val} placeholder={ph} onChange={e=>onChange(e.target.value)}
+      style={{width:w||70,background:"#060e06",border:"1px solid #162016",color:"#a0da60",
+        padding:"4px 6px",borderRadius:5,fontFamily:"'DM Mono',monospace",fontSize:11,outline:"none"}}/>
+  );
+
+  const TAB_STYLE = (t) => ({
+    background:activeTab===t?"#0d1e0d":"transparent", border:"none",
+    borderBottom:activeTab===t?"2px solid #6aad3a":"2px solid transparent",
+    color:activeTab===t?"#a0da60":"#3a6a3a", padding:"9px 16px",
+    cursor:"pointer", fontFamily:"'DM Mono',monospace", fontSize:10, whiteSpace:"nowrap"
+  });
+
+  // ── Auth screen ────────────────────────────────────────────────────────────
+  if(!authOk) return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}>
+      <div style={{background:"#08120a",border:"1px solid #1e3a1e",borderRadius:16,padding:"36px 44px",display:"flex",flexDirection:"column",alignItems:"center",gap:16,minWidth:320}}>
+        <span style={{fontSize:32}}>🔐</span>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,color:"#a0da60",fontWeight:700}}>Painel Admin</div>
+        <div style={{fontSize:10,color:"#305030",letterSpacing:1.5,textTransform:"uppercase"}}>Banco de Ingredientes · v{DB_VERSION}</div>
+        <input type="password" value={pw} onChange={e=>setPw(e.target.value)}
+          onKeyDown={e=>e.key==="Enter"&&tryAuth()}
+          placeholder="senha de acesso"
+          style={{background:"#091409",border:`1px solid ${pwErr?"#7a2020":"#1c381c"}`,color:"#a0da60",
+            padding:"9px 14px",borderRadius:8,fontFamily:"'DM Mono',monospace",fontSize:13,width:"100%",
+            outline:"none",textAlign:"center",letterSpacing:2}}/>
+        {pwErr&&<div style={{fontSize:10,color:"#c06060"}}>senha incorreta</div>}
+        <div style={{display:"flex",gap:10,width:"100%"}}>
+          <button onClick={onClose} style={{flex:1,background:"transparent",border:"1px solid #1c381c",color:"#305030",padding:"8px",borderRadius:7,cursor:"pointer",fontFamily:"'DM Mono',monospace",fontSize:11}}>Cancelar</button>
+          <button onClick={tryAuth} style={{flex:2,background:"linear-gradient(135deg,#1c4a0c,#12300a)",border:"1px solid #3a7a1a",color:"#a0da60",padding:"8px",borderRadius:7,cursor:"pointer",fontFamily:"'DM Mono',monospace",fontSize:11,letterSpacing:0.5}}>Entrar →</button>
+        </div>
+        <div style={{fontSize:8,color:"#1e3e1e",textAlign:"center"}}>Altere a senha em ADMIN_PASSWORD no código-fonte</div>
+      </div>
+    </div>
+  );
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:20,backdropFilter:"blur(8px)"}}>
+      <div style={{background:"#070e0a",border:"1px solid #1e3a2e",borderRadius:18,width:"100%",maxWidth:860,maxHeight:"90vh",display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 24px 80px rgba(0,0,0,0.7)"}}>
+
+        {/* Header */}
+        <div style={{padding:"16px 22px",borderBottom:"1px solid #142214",display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:22}}>🔬</span>
+          <div>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:17,color:"#a0da60",fontWeight:700}}>Admin · Banco de Ingredientes</div>
+            <div style={{fontSize:9,color:"#305030",letterSpacing:2,textTransform:"uppercase",marginTop:2}}>
+              v{DB_VERSION} · {Object.keys(BOTANICALS_DB).length} base · {Object.keys(allBots).length - Object.keys(BOTANICALS_DB).length} custom
+            </div>
+          </div>
+          <div style={{marginLeft:"auto",display:"flex",gap:8,alignItems:"center"}}>
+            <button onClick={exportDB} style={{background:"#0a1e14",border:"1px solid #2a5a3a",color:"#5ada90",padding:"5px 13px",borderRadius:7,cursor:"pointer",fontFamily:"'DM Mono',monospace",fontSize:10}}>⬇ Exportar JSON</button>
+            <button onClick={onClose} style={{background:"transparent",border:"none",color:"#305030",fontSize:20,cursor:"pointer"}}>✕</button>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div style={{display:"flex",borderBottom:"1px solid #142214",overflowX:"auto"}}>
+          {[["db","📋 Banco"],["edit","✏️ Editar"],["import","📥 Importar JSON"],["update","🔄 Atualizar via URL"]].map(([t,l])=>(
+            <button key={t} onClick={()=>setTab(t)} style={TAB_STYLE(t)}>{l}</button>
+          ))}
+        </div>
+
+        {/* ── TAB: BANCO ──────────────────────────────────────────────────── */}
+        {activeTab==="db"&&(
+          <div style={{flex:1,overflowY:"auto",padding:"14px 22px"}}>
+            <div style={{fontSize:9,color:"#305030",letterSpacing:1.5,marginBottom:12,textTransform:"uppercase"}}>
+              {Object.keys(allBots).length} botânicos · {Object.keys(BOTANICALS_DB).length} na base · {Object.keys(allBots).length-Object.keys(BOTANICALS_DB).length} custom
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:5}}>
+              {Object.entries(allBots).map(([name,info])=>{
+                const isCustom = !BOTANICALS_DB[name];
+                const isOverridden = !!customDB?.[name]?.botData && BOTANICALS_DB[name];
+                return(
+                  <div key={name} style={{display:"flex",alignItems:"center",gap:10,background:"rgba(7,16,7,0.8)",border:`1px solid ${isCustom?"#2a4a1a":isOverridden?"#2a3a5a":"#122212"}`,borderRadius:8,padding:"8px 12px"}}>
+                    <span style={{fontSize:16}}>{info.icon}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:11,color:"#80b860",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                        {name}
+                        {isCustom&&<span style={{fontSize:8,color:"#6ada3a",border:"1px solid #2a5a1a",padding:"1px 5px",borderRadius:8,marginLeft:6}}>custom</span>}
+                        {isOverridden&&<span style={{fontSize:8,color:"#6090c0",border:"1px solid #204060",padding:"1px 5px",borderRadius:8,marginLeft:6}}>editado</span>}
+                      </div>
+                      <div style={{fontSize:8,color:"#1e3e1e"}}>{info.category} · {info.compounds?.length||0} compostos</div>
+                    </div>
+                    <button onClick={()=>startEdit(name)} style={{background:"#0a1e14",border:"1px solid #1e4a2a",color:"#4ada80",padding:"3px 10px",borderRadius:6,cursor:"pointer",fontFamily:"'DM Mono',monospace",fontSize:9}}>✏️ editar</button>
+                    {(isCustom||isOverridden)&&(
+                      <button onClick={()=>deleteBot(name)} style={{background:"#1a0808",border:"1px solid #4a1818",color:"#c06060",padding:"3px 10px",borderRadius:6,cursor:"pointer",fontFamily:"'DM Mono',monospace",fontSize:9}}>✕</button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ── TAB: EDIT ──────────────────────────────────────────────────── */}
+        {activeTab==="edit"&&(
+          <div style={{flex:1,overflowY:"auto",padding:"14px 22px"}}>
+            {!editBot?(
+              <div style={{textAlign:"center",padding:"40px 0",color:"#254525",fontSize:12}}>
+                Selecione um botânico na aba 📋 Banco para editar
+              </div>
+            ):(
+              <>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+                  <span style={{fontSize:22}}>{editData?.icon}</span>
+                  <div style={{fontFamily:"'Playfair Display',serif",fontSize:16,color:"#a0da60"}}>{editBot}</div>
+                  <div style={{marginLeft:"auto",display:"flex",gap:8}}>
+                    <button onClick={()=>{setEditBot(null);setEditData(null);setTab("db");}} style={{background:"transparent",border:"1px solid #1c381c",color:"#305030",padding:"5px 13px",borderRadius:7,cursor:"pointer",fontFamily:"'DM Mono',monospace",fontSize:10}}>Cancelar</button>
+                    <button onClick={saveEdit} style={{background:"linear-gradient(135deg,#1c4a0c,#12300a)",border:"1px solid #3a7a1a",color:"#a0da60",padding:"5px 16px",borderRadius:7,cursor:"pointer",fontFamily:"'DM Mono',monospace",fontSize:10}}>Salvar ✓</button>
+                  </div>
+                </div>
+
+                {/* Basic fields */}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 80px 1fr",gap:10,marginBottom:14}}>
+                  {[["Nome","name","text"],["Ícone","icon","text"],["Categoria","category","select"]].map(([l,k,t])=>(
+                    <div key={k}>
+                      <label style={{fontSize:8,color:"#305030",textTransform:"uppercase",letterSpacing:1,display:"block",marginBottom:3}}>{l}</label>
+                      {t==="select"?(
+                        <select value={editData?.[k]||""} onChange={e=>setEditData(p=>({...p,[k]:e.target.value}))}
+                          style={{background:"#091409",border:"1px solid #1c381c",color:"#a0da60",padding:"6px 8px",borderRadius:6,fontFamily:"'DM Mono',monospace",fontSize:11,width:"100%",outline:"none"}}>
+                          {["Base","Cítricos","Especiarias","Raízes","Ervas","Flores","Frutas","Amadeirados","Adocicados"].map(c=><option key={c} value={c}>{c}</option>)}
+                        </select>
+                      ):(
+                        <input type="text" value={editData?.[k]||""} onChange={e=>setEditData(p=>({...p,[k]:e.target.value}))}
+                          style={{background:"#091409",border:"1px solid #1c381c",color:"#a0da60",padding:"6px 8px",borderRadius:6,fontFamily:"'DM Mono',monospace",fontSize:k==="icon"?18:11,width:"100%",outline:"none"}}/>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Compounds list */}
+                <div style={{fontSize:9,color:"#3a6a3a",letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>Compostos</div>
+                <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:12}}>
+                  {editData?.compounds?.map((c,i)=>(
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:6,background:"#091409",border:"1px solid #162416",borderRadius:7,padding:"6px 10px"}}>
+                      <span style={{display:"inline-block",padding:"1px 7px",borderRadius:18,fontSize:9,background:`${AROMA_COLORS[c.aroma]||"#888"}20`,color:AROMA_COLORS[c.aroma]||"#888",border:`1px solid ${AROMA_COLORS[c.aroma]||"#888"}40`}}>{c.aroma}</span>
+                      <span style={{flex:1,fontSize:10,color:"#80b060"}}>{c.name}</span>
+                      <span style={{fontSize:10,color:"#a0da60"}}>{c.conc}%</span>
+                      <span style={{fontSize:9,color:"#305030"}}>{c.min}–{c.max}</span>
+                      {inp(c.conc, v=>setEditData(p=>({...p,compounds:p.compounds.map((x,j)=>j===i?{...x,conc:parseFloat(v)||0}:x)})),"conc%",58)}
+                      <button onClick={()=>setEditData(p=>({...p,compounds:p.compounds.filter((_,j)=>j!==i)}))}
+                        style={{background:"transparent",border:"none",color:"#5a3030",cursor:"pointer",fontSize:13}}>✕</button>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Add compound to edit */}
+                <div style={{background:"#091409",border:"1px solid #1c381c",borderRadius:9,padding:"10px 12px",display:"grid",gridTemplateColumns:"2fr 1fr 1.5fr 1fr 1fr auto",gap:7,alignItems:"end"}}>
+                  {[["Composto","text","name",editCmp.name],["Conc %","number","conc",editCmp.conc]].map(([l,t,k,v])=>(
+                    <div key={k}>
+                      <label style={{fontSize:8,color:"#254525",display:"block",marginBottom:2,textTransform:"uppercase"}}>{l}</label>
+                      <input type={t} value={v} placeholder={l} onChange={e=>setEditCmp(p=>({...p,[k]:e.target.value}))}
+                        style={{background:"#060e06",border:"1px solid #162016",color:"#a0da60",padding:"4px 7px",borderRadius:5,fontFamily:"'DM Mono',monospace",fontSize:11,width:"100%",outline:"none"}}/>
+                    </div>
+                  ))}
+                  <div>
+                    <label style={{fontSize:8,color:"#254525",display:"block",marginBottom:2,textTransform:"uppercase"}}>Aroma</label>
+                    <select value={editCmp.aroma} onChange={e=>setEditCmp(p=>({...p,aroma:e.target.value}))}
+                      style={{background:"#060e06",border:"1px solid #162016",color:"#a0da60",padding:"4px 5px",borderRadius:5,fontFamily:"'DM Mono',monospace",fontSize:10,width:"100%",outline:"none"}}>
+                      {AROMA_CATEGORIES.map(a=><option key={a} value={a}>{a}</option>)}
+                    </select>
+                  </div>
+                  {[["Min","min",editCmp.min],["Max","max",editCmp.max]].map(([l,k,v])=>(
+                    <div key={k}>
+                      <label style={{fontSize:8,color:"#254525",display:"block",marginBottom:2,textTransform:"uppercase"}}>{l}</label>
+                      <input type="number" value={v} placeholder={l} onChange={e=>setEditCmp(p=>({...p,[k]:e.target.value}))}
+                        style={{background:"#060e06",border:"1px solid #162016",color:"#a0da60",padding:"4px 7px",borderRadius:5,fontFamily:"'DM Mono',monospace",fontSize:11,width:"100%",outline:"none"}}/>
+                    </div>
+                  ))}
+                  <div>
+                    <label style={{fontSize:8,color:"transparent",display:"block",marginBottom:2}}>+</label>
+                    <button onClick={addCmpToEdit} style={{background:"#1a4a0a",border:"1px solid #3a7a1a",color:"#a0da60",padding:"4px 12px",borderRadius:5,cursor:"pointer",fontFamily:"'DM Mono',monospace",fontSize:11}}>+</button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ── TAB: IMPORT ──────────────────────────────────────────────── */}
+        {activeTab==="import"&&(
+          <div style={{flex:1,overflowY:"auto",padding:"18px 22px"}}>
+            <div style={{fontSize:10,color:"#4a7a4a",marginBottom:14,lineHeight:1.8}}>
+              Cole aqui um arquivo JSON exportado pelo app (ou gerado manualmente).<br/>
+              <strong style={{color:"#70b060"}}>Mesclar:</strong> adiciona apenas botânicos novos (não sobrescreve existentes).<br/>
+              <strong style={{color:"#70a0c0"}}>Substituir:</strong> sobrescreve todos os botânicos presentes no JSON.
+            </div>
+            <textarea value={importText} onChange={e=>setImportText(e.target.value)}
+              placeholder={'{\n  "version": "1.1.0",\n  "botanicals": {\n    "Pimenta Sichuan": {\n      "icon": "🌶",\n      "category": "Especiarias",\n      "compounds": [...]\n    }\n  }\n}'}
+              rows={14}
+              style={{width:"100%",background:"#060e06",border:`1px solid ${importErr?"#7a2020":importOk?"#2a7a3a":"#162416"}`,color:"#a0da60",padding:"10px 12px",borderRadius:8,fontFamily:"'DM Mono',monospace",fontSize:11,outline:"none",resize:"vertical"}}/>
+            {importErr&&<div style={{fontSize:10,color:"#c06060",marginTop:6,padding:"6px 10px",background:"rgba(120,20,20,0.2)",borderRadius:6}}>❌ {importErr}</div>}
+            {importOk&&<div style={{fontSize:10,color:"#60c090",marginTop:6,padding:"6px 10px",background:"rgba(20,100,50,0.2)",borderRadius:6}}>✓ Importado com sucesso!</div>}
+            <div style={{display:"flex",gap:10,marginTop:14,justifyContent:"flex-end"}}>
+              <button onClick={()=>doImport("merge")} disabled={!importText.trim()}
+                style={{background:"#0a2414",border:"1px solid #2a5a3a",color:"#5ada90",padding:"8px 18px",borderRadius:7,cursor:importText.trim()?"pointer":"not-allowed",fontFamily:"'DM Mono',monospace",fontSize:11}}>
+                ⊕ Mesclar
+              </button>
+              <button onClick={()=>doImport("replace")} disabled={!importText.trim()}
+                style={{background:"#0a1824",border:"1px solid #2a4a6a",color:"#60a0d0",padding:"8px 18px",borderRadius:7,cursor:importText.trim()?"pointer":"not-allowed",fontFamily:"'DM Mono',monospace",fontSize:11}}>
+                ↺ Substituir
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── TAB: UPDATE VIA URL ──────────────────────────────────────── */}
+        {activeTab==="update"&&(
+          <div style={{flex:1,overflowY:"auto",padding:"18px 22px"}}>
+            <div style={{fontSize:10,color:"#4a7a4a",marginBottom:16,lineHeight:1.9}}>
+              Aponte para uma URL pública com um arquivo JSON de ingredientes.<br/>
+              Use o botão <strong style={{color:"#a0da60"}}>⬇ Exportar JSON</strong> para gerar o formato correto,<br/>
+              hospede no GitHub, Notion, Google Drive (link direto) ou qualquer servidor.
+            </div>
+
+            {/* Format guide */}
+            <div style={{background:"rgba(10,30,15,0.8)",border:"1px solid #1e4a2a",borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:10,color:"#4a8a5a",lineHeight:1.8}}>
+              <div style={{color:"#6ada8a",marginBottom:4,fontWeight:500}}>Formato esperado do JSON:</div>
+              <pre style={{fontSize:9,color:"#3a6a4a",overflow:"auto"}}{`{
+  "version": "1.1.0",
+  "releaseNotes": "Adicionados 5 botânicos de regiões do Brasil",
+  "botanicals": {
+    "Pimenta Baniwa": {
+      "icon": "🌶",
+      "category": "Especiarias",
+      "compounds": [
+        { "name": "Capsaicina", "conc": 0.5,
+          "aroma": "Picante", "min": 0.01, "max": 0.1 }
+      ]
+    }
+  }
+}`}</pre>
+            </div>
+
+            <div style={{display:"flex",gap:8,marginBottom:12}}>
+              <input type="url" value={updateUrl} onChange={e=>setUpdateUrl(e.target.value)}
+                placeholder="https://raw.githubusercontent.com/voce/gin-lab/main/botanicals.json"
+                style={{flex:1,background:"#091409",border:"1px solid #1c381c",color:"#a0da60",padding:"8px 12px",borderRadius:7,fontFamily:"'DM Mono',monospace",fontSize:11,outline:"none"}}/>
+              <button onClick={fetchUpdate} disabled={!updateUrl.trim()||updateStatus==="loading"}
+                style={{background:"linear-gradient(135deg,#1c4a0c,#12300a)",border:"1px solid #3a7a1a",color:"#a0da60",padding:"8px 18px",borderRadius:7,cursor:updateUrl.trim()?"pointer":"not-allowed",fontFamily:"'DM Mono',monospace",fontSize:11}}>
+                {updateStatus==="loading"?"⏳ Buscando...":"🔄 Verificar"}
+              </button>
+            </div>
+
+            {updateMsg&&(
+              <div style={{fontSize:10,color:updateStatus==="ok"?"#60c090":updateStatus==="err"?"#c06060":"#a0da60",padding:"8px 12px",background:updateStatus==="ok"?"rgba(20,100,50,0.2)":updateStatus==="err"?"rgba(120,20,20,0.2)":"rgba(10,40,20,0.2)",borderRadius:7,marginBottom:12}}>
+                {updateMsg}
+              </div>
+            )}
+
+            {updateData&&updateStatus==="ok"&&(
+              <div style={{background:"rgba(10,30,15,0.8)",border:"1px solid #2a5a3a",borderRadius:10,padding:"12px 16px",marginBottom:12}}>
+                <div style={{fontSize:10,color:"#70c080",marginBottom:8,fontWeight:500}}>Preview — novos botânicos encontrados:</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:12}}>
+                  {Object.entries(updateData.botanicals)
+                    .filter(([n])=>!BOTANICALS_DB[n])
+                    .slice(0,20)
+                    .map(([n,d])=>(
+                      <span key={n} style={{fontSize:9,color:"#5ada80",background:"rgba(20,80,30,0.3)",border:"1px solid #2a5a3a",padding:"2px 8px",borderRadius:12}}>
+                        {d.icon||"🌿"} {n}
+                      </span>
+                    ))}
+                  {Object.keys(updateData.botanicals).filter(n=>!BOTANICALS_DB[n]).length===0&&(
+                    <span style={{fontSize:9,color:"#5a7a5a"}}>Nenhum botânico novo — todos já existem na base</span>
+                  )}
+                </div>
+                {updateData.releaseNotes&&<div style={{fontSize:9,color:"#4a7a5a",marginBottom:10}}>📝 {updateData.releaseNotes}</div>}
+                <button onClick={applyUpdate}
+                  style={{background:"linear-gradient(135deg,#1c4a0c,#12300a)",border:"1px solid #3a7a1a",color:"#a0da60",padding:"8px 20px",borderRadius:7,cursor:"pointer",fontFamily:"'DM Mono',monospace",fontSize:11}}>
+                  ✓ Aplicar Atualização
+                </button>
+              </div>
+            )}
+
+            <div style={{marginTop:20,padding:"12px 14px",background:"rgba(5,15,8,0.6)",border:"1px solid #0e220e",borderRadius:8,fontSize:9,color:"#254525",lineHeight:2}}>
+              <strong style={{color:"#3a6a3a"}}>WORKFLOW DE ATUALIZAÇÃO —</strong><br/>
+              1. Exporte o banco atual com ⬇ Exportar JSON<br/>
+              2. Edite o arquivo: adicione novos botânicos, ajuste concentrações<br/>
+              3. Hospede o arquivo em qualquer URL pública<br/>
+              4. Cole a URL aqui e clique Verificar → Aplicar<br/>
+              5. O estoque existente é preservado — apenas novos ingredientes são adicionados
+            </div>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div style={{padding:"12px 22px",borderTop:"1px solid #142214",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{fontSize:9,color:"#254525"}}>
+            v{DB_VERSION} · {DB_RELEASE_NOTES.slice(0,60)}...
+          </div>
+          <button onClick={onClose} style={{background:"transparent",border:"1px solid #1c381c",color:"#305030",padding:"7px 16px",borderRadius:7,cursor:"pointer",fontFamily:"'DM Mono',monospace",fontSize:11}}>Fechar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── STOCK MODAL ──────────────────────────────────────────────────────────────
+function StockModal({stock,onSave,onClose}){
+  const [localStock,setLocalStock]=useState(()=>{
+    const s={};
+    Object.keys(BOTANICALS_DB).forEach(name=>{s[name]=stock[name]||{inStock:false,hasReport:false,compounds:{}};});
+    Object.keys(stock).forEach(name=>{if(!s[name])s[name]=stock[name];});
+    return s;
+  });
+  const [activeTab,setActiveTab]=useState("stock");
+  const [newBot,setNewBot]=useState({name:"",icon:"🌿",category:"Especiarias",compounds:[]});
+  const [newCompound,setNewCompound]=useState({name:"",conc:"",aroma:"Herbáceo",min:"",max:""});
+  const [expandedBot,setExpandedBot]=useState(null);
+  const [searchStock,setSearchStock]=useState("");
+
+  const allBots=useMemo(()=>{
+    const db=Object.entries(BOTANICALS_DB);
+    const custom=Object.entries(localStock).filter(([n])=>!BOTANICALS_DB[n]);
+    return[...db,...custom.map(([n,s])=>[n,s.botData||{icon:"🌿",category:"Especiarias",compounds:[]}])];
+  },[localStock]);
+
+  const filtered=allBots.filter(([n])=>n.toLowerCase().includes(searchStock.toLowerCase()));
+  const toggleStock=name=>setLocalStock(p=>({...p,[name]:{...(p[name]||{}),inStock:!(p[name]?.inStock)}}));
+  const toggleReport=name=>setLocalStock(p=>({...p,[name]:{...(p[name]||{}),hasReport:!(p[name]?.hasReport)}}));
+  const setCompoundOverride=(botName,cmpName,val)=>setLocalStock(p=>({...p,[botName]:{...p[botName],compounds:{...(p[botName]?.compounds||{}),[cmpName]:val}}}));
+  const addCustomBot=()=>{
+    if(!newBot.name.trim()||!newBot.compounds.length)return;
+    const name=newBot.name.trim();
+    setLocalStock(p=>({...p,[name]:{inStock:true,hasReport:false,compounds:{},botData:{icon:newBot.icon,category:newBot.category,compounds:newBot.compounds}}}));
+    setActiveTab("stock");setNewBot({name:"",icon:"🌿",category:"Especiarias",compounds:[]});
+  };
+  const addCmpToNew=()=>{
+    if(!newCompound.name)return;
+    setNewBot(p=>({...p,compounds:[...p.compounds,{name:newCompound.name,conc:parseFloat(newCompound.conc)||0,aroma:newCompound.aroma,min:parseFloat(newCompound.min)||0,max:parseFloat(newCompound.max)||0}]}));
+    setNewCompound({name:"",conc:"",aroma:"Herbáceo",min:"",max:""});
+  };
+  const stockCount=Object.values(localStock).filter(s=>s.inStock).length;
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:20,backdropFilter:"blur(6px)"}}>
+      <div style={{background:"#08120a",border:"1px solid #1e3a1e",borderRadius:18,width:"100%",maxWidth:780,maxHeight:"88vh",display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 24px 80px rgba(0,0,0,0.6)"}}>
+        <div style={{padding:"18px 22px",borderBottom:"1px solid #142214",display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:22}}>📦</span>
+          <div>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:17,color:"#a0da60",fontWeight:700}}>Gerenciar Estoque</div>
+            <div style={{fontSize:9,color:"#305030",letterSpacing:2,textTransform:"uppercase",marginTop:1}}>{stockCount} ingrediente{stockCount!==1?"s":""} em estoque</div>
+          </div>
+          <button onClick={onClose} style={{marginLeft:"auto",background:"transparent",border:"none",color:"#305030",fontSize:20,cursor:"pointer"}}>✕</button>
+        </div>
+        <div style={{display:"flex",borderBottom:"1px solid #142214"}}>
+          {[["stock","📋 Estoque"],["new","➕ Novo Botânico"]].map(([t,l])=>(
+            <button key={t} onClick={()=>setActiveTab(t)} style={{background:activeTab===t?"#0d1e0d":"transparent",border:"none",borderBottom:activeTab===t?"2px solid #6aad3a":"2px solid transparent",color:activeTab===t?"#a0da60":"#3a6a3a",padding:"10px 20px",cursor:"pointer",fontFamily:"'DM Mono',monospace",fontSize:11}}>{l}</button>
+          ))}
+        </div>
+
+        {activeTab==="stock"&&(
+          <div style={{flex:1,overflowY:"auto",padding:"14px 22px"}}>
+            <div style={{position:"relative",marginBottom:12}}>
+              <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:"#305030",fontSize:12,pointerEvents:"none"}}>🔍</span>
+              <input type="text" value={searchStock} onChange={e=>setSearchStock(e.target.value)} placeholder="Buscar ingrediente..."
+                style={{background:"#091409",border:"1px solid #1c381c",color:"#a0da60",padding:"7px 10px 7px 32px",borderRadius:7,fontFamily:"'DM Mono',monospace",fontSize:12,width:"100%",outline:"none"}}/>
+            </div>
+            <div style={{display:"flex",gap:16,marginBottom:12,fontSize:9,color:"#305030",letterSpacing:1}}>
+              <span>🟢 EM ESTOQUE</span><span>📄 LAUDO ATIVO → concentrações reais</span><span>📊 SEM LAUDO → literatura</span>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {filtered.map(([name,info])=>{
+                const s=localStock[name]||{};const isCustom=!BOTANICALS_DB[name];
+                const botInfo=isCustom?(s.botData||info):info;const cmps=botInfo.compounds||[];const isExpanded=expandedBot===name;
+                return(
+                  <div key={name} style={{border:`1px solid ${s.inStock?"#2a5020":"#162216"}`,borderRadius:10,background:s.inStock?"rgba(10,22,8,0.9)":"rgba(7,14,7,0.7)",overflow:"hidden"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px"}}>
+                      <button onClick={()=>toggleStock(name)} style={{background:s.inStock?"#1a4a0a":"#0a140a",border:`1px solid ${s.inStock?"#4a8a2a":"#1c2e1c"}`,borderRadius:6,padding:"3px 10px",cursor:"pointer",fontFamily:"'DM Mono',monospace",fontSize:10,color:s.inStock?"#a0da60":"#305030",whiteSpace:"nowrap"}}>
+                        {s.inStock?"✓ estoque":"+ adicionar"}
+                      </button>
+                      <span style={{fontSize:17}}>{botInfo.icon||"🌿"}</span>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:11,color:s.inStock?"#90c860":"#446044",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}{isCustom&&<span style={{fontSize:9,color:"#4a8a2a",border:"1px solid #2a5a1a",padding:"1px 5px",borderRadius:8,marginLeft:4}}>custom</span>}</div>
+                        <div style={{fontSize:9,color:"#1e3e1e"}}>{botInfo.category} · {cmps.length} compostos</div>
+                      </div>
+                      {s.inStock&&(<>
+                        <button onClick={()=>toggleReport(name)} style={{background:s.hasReport?"#0a1e30":"#0a140a",border:`1px solid ${s.hasReport?"#2a5a7a":"#1c2e1c"}`,borderRadius:6,padding:"3px 9px",cursor:"pointer",fontFamily:"'DM Mono',monospace",fontSize:9,color:s.hasReport?"#60aadc":"#305030",whiteSpace:"nowrap"}}>
+                          {s.hasReport?"📄 laudo ativo":"📊 literatura"}
+                        </button>
+                        {s.hasReport&&<button onClick={()=>setExpandedBot(isExpanded?null:name)} style={{background:"transparent",border:"1px solid #1c381c",borderRadius:6,padding:"3px 9px",cursor:"pointer",fontFamily:"'DM Mono',monospace",fontSize:9,color:"#3a7a3a"}}>{isExpanded?"▲":"▼ dados"}</button>}
+                      </>)}
+                    </div>
+                    {s.inStock&&s.hasReport&&isExpanded&&(
+                      <div style={{borderTop:"1px solid #122012",padding:"12px 14px",background:"rgba(5,12,5,0.8)"}}>
+                        <div style={{fontSize:9,color:"#3a6a3a",letterSpacing:1.5,marginBottom:10,textTransform:"uppercase"}}>Concentrações do Laudo (%) — em branco = literatura</div>
+                        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:8}}>
+                          {cmps.map(c=>{const ov=s.compounds?.[c.name];return(
+                            <div key={c.name} style={{display:"flex",alignItems:"center",gap:8,background:"#0a160a",border:"1px solid #162416",borderRadius:7,padding:"6px 10px"}}>
+                              <div style={{flex:1,minWidth:0}}><div style={{fontSize:10,color:"#70a050",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</div><div style={{fontSize:8,color:"#254525"}}>lit.: {c.conc}%</div></div>
+                              <input type="number" min="0" max="100" step="0.1" placeholder={`${c.conc}`} value={ov!==undefined?ov:""}
+                                onChange={e=>setCompoundOverride(name,c.name,e.target.value===""?undefined:parseFloat(e.target.value))}
+                                style={{width:62,background:"#060e06",border:`1px solid ${ov!==undefined?"#3a7a2a":"#182818"}`,color:"#a0da60",padding:"4px 6px",borderRadius:5,fontFamily:"'DM Mono',monospace",fontSize:11,outline:"none",textAlign:"right"}}/>
+                              <span style={{fontSize:9,color:"#254525"}}>%</span>
+                            </div>
+                          );})}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {activeTab==="new"&&(
+          <div style={{flex:1,overflowY:"auto",padding:"18px 22px"}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+              <div><label style={{fontSize:9,color:"#3a6a3a",textTransform:"uppercase",letterSpacing:1,display:"block",marginBottom:4}}>Nome</label>
+                <input type="text" value={newBot.name} onChange={e=>setNewBot(p=>({...p,name:e.target.value}))} placeholder="Ex: Pimenta Sichuan"
+                  style={{background:"#091409",border:"1px solid #1c381c",color:"#a0da60",padding:"7px 10px",borderRadius:7,fontFamily:"'DM Mono',monospace",fontSize:12,width:"100%",outline:"none"}}/></div>
+              <div><label style={{fontSize:9,color:"#3a6a3a",textTransform:"uppercase",letterSpacing:1,display:"block",marginBottom:4}}>Ícone</label>
+                <input type="text" value={newBot.icon} onChange={e=>setNewBot(p=>({...p,icon:e.target.value}))}
+                  style={{background:"#091409",border:"1px solid #1c381c",color:"#a0da60",padding:"7px 10px",borderRadius:7,fontFamily:"'DM Mono',monospace",fontSize:20,width:"100%",outline:"none"}}/></div>
+              <div style={{gridColumn:"1/-1"}}><label style={{fontSize:9,color:"#3a6a3a",textTransform:"uppercase",letterSpacing:1,display:"block",marginBottom:4}}>Categoria</label>
+                <select value={newBot.category} onChange={e=>setNewBot(p=>({...p,category:e.target.value}))}
+                  style={{background:"#091409",border:"1px solid #1c381c",color:"#a0da60",padding:"7px 10px",borderRadius:7,fontFamily:"'DM Mono',monospace",fontSize:12,width:"100%",outline:"none"}}>
+                  {["Base","Cítricos","Especiarias","Raízes","Ervas","Flores","Frutas","Amadeirados","Adocicados"].map(c=><option key={c} value={c}>{c}</option>)}
+                </select></div>
+            </div>
+            {newBot.compounds.length>0&&<div style={{marginBottom:10,display:"flex",flexDirection:"column",gap:5}}>
+              {newBot.compounds.map((c,i)=>(
+                <div key={i} style={{display:"flex",alignItems:"center",gap:8,background:"#091409",border:"1px solid #162416",borderRadius:7,padding:"6px 10px",fontSize:10}}>
+                  <span style={{display:"inline-block",padding:"2px 8px",borderRadius:20,fontSize:10,background:`${AROMA_COLORS[c.aroma]||"#888"}20`,color:AROMA_COLORS[c.aroma]||"#888",border:`1px solid ${AROMA_COLORS[c.aroma]||"#888"}40`}}>{c.aroma}</span>
+                  <span style={{color:"#80b060",flex:1}}>{c.name}</span><span style={{color:"#a0da60"}}>{c.conc}%</span>
+                  <button onClick={()=>setNewBot(p=>({...p,compounds:p.compounds.filter((_,j)=>j!==i)}))} style={{background:"transparent",border:"none",color:"#5a3030",cursor:"pointer",fontSize:13}}>✕</button>
+                </div>
+              ))}
+            </div>}
+            <div style={{background:"#091409",border:"1px solid #1c381c",borderRadius:10,padding:14,display:"grid",gridTemplateColumns:"2fr 1fr 1.5fr 1fr 1fr auto",gap:8,alignItems:"end",marginBottom:16}}>
+              {[["Composto","nome","name",newCompound.name,"text"],["Conc. (%)","65.0","conc",newCompound.conc,"number"]].map(([l,ph,k,v,t])=>(
+                <div key={k}><label style={{fontSize:8,color:"#305030",display:"block",marginBottom:3,textTransform:"uppercase",letterSpacing:1}}>{l}</label>
+                  <input type={t} value={v} placeholder={ph} onChange={e=>setNewCompound(p=>({...p,[k]:e.target.value}))}
+                    style={{background:"#060e06",border:"1px solid #162016",color:"#a0da60",padding:"5px 8px",borderRadius:6,fontFamily:"'DM Mono',monospace",fontSize:11,width:"100%",outline:"none"}}/></div>
+              ))}
+              <div><label style={{fontSize:8,color:"#305030",display:"block",marginBottom:3,textTransform:"uppercase",letterSpacing:1}}>Aroma</label>
+                <select value={newCompound.aroma} onChange={e=>setNewCompound(p=>({...p,aroma:e.target.value}))}
+                  style={{background:"#060e06",border:"1px solid #162016",color:"#a0da60",padding:"5px 6px",borderRadius:6,fontFamily:"'DM Mono',monospace",fontSize:11,width:"100%",outline:"none"}}>
+                  {AROMA_CATEGORIES.map(a=><option key={a} value={a}>{a}</option>)}
+                </select></div>
+              {[["Limiar mín","0.006","min",newCompound.min],["Limiar máx","0.10","max",newCompound.max]].map(([l,ph,k,v])=>(
+                <div key={k}><label style={{fontSize:8,color:"#305030",display:"block",marginBottom:3,textTransform:"uppercase",letterSpacing:1}}>{l}</label>
+                  <input type="number" value={v} placeholder={ph} onChange={e=>setNewCompound(p=>({...p,[k]:e.target.value}))}
+                    style={{background:"#060e06",border:"1px solid #162016",color:"#a0da60",padding:"5px 8px",borderRadius:6,fontFamily:"'DM Mono',monospace",fontSize:11,width:"100%",outline:"none"}}/></div>
+              ))}
+              <div><label style={{fontSize:8,color:"transparent",display:"block",marginBottom:3}}>add</label>
+                <button onClick={addCmpToNew} style={{background:"#1a4a0a",border:"1px solid #3a7a1a",color:"#a0da60",padding:"5px 12px",borderRadius:6,cursor:"pointer",fontFamily:"'DM Mono',monospace",fontSize:11}}>+ add</button></div>
+            </div>
+            <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+              <button onClick={addCustomBot} disabled={!newBot.name.trim()||!newBot.compounds.length}
+                style={{background:newBot.name.trim()&&newBot.compounds.length?"linear-gradient(135deg,#1c4a0c,#12300a)":"#0a140a",border:"1px solid #3a7a1a",color:newBot.name.trim()&&newBot.compounds.length?"#a0da60":"#254525",padding:"8px 22px",borderRadius:7,cursor:newBot.name.trim()&&newBot.compounds.length?"pointer":"not-allowed",fontFamily:"'DM Mono',monospace",fontSize:11}}>
+                Salvar Botânico →
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div style={{padding:"14px 22px",borderTop:"1px solid #142214",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{fontSize:10,color:"#254525"}}>{stockCount} em estoque · {Object.values(localStock).filter(s=>s.inStock&&s.hasReport).length} com laudo</div>
+          <div style={{display:"flex",gap:10}}>
+            <button onClick={onClose} style={{background:"transparent",border:"1px solid #1c381c",color:"#305030",padding:"8px 18px",borderRadius:7,cursor:"pointer",fontFamily:"'DM Mono',monospace",fontSize:11}}>Cancelar</button>
+            <button onClick={()=>onSave(localStock)} style={{background:"linear-gradient(135deg,#1c4a0c,#12300a)",border:"1px solid #3a7a1a",color:"#a0da60",padding:"8px 22px",borderRadius:7,cursor:"pointer",fontFamily:"'DM Mono',monospace",fontSize:11}}>Salvar ✓</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── MAIN APP ─────────────────────────────────────────────────────────────────
+function App(){
+  const [step,setStep]=useState("input");
+  const [mode,setMode]=useState("gin"); // "gin" | "cocktail"
+  const [search,setSearch]=useState("");
+  const [activeCat,setActiveCat]=useState("Todos");
+  const [showAll,setShowAll]=useState(false);
+  const [showStockModal,setShowStockModal]=useState(false);
+  const [showAdminModal,setShowAdminModal]=useState(false);
+  const [stock,setStock]=useState({});
+  const [customDB,setCustomDB]=useState({});
+  const [stockLoaded,setStockLoaded]=useState(false);
+  const [updateBanner,setUpdateBanner]=useState(null);
+  // Brix/pH per ingredient — only for Frutas/Cítricos/Flores in cocktail mode
+  const [fruitParams,setFruitParams]=useState({}); // { [botName]: { brix: "", ph: "" } }
+  const [grams,setGrams]=useState(()=>Object.fromEntries(Object.keys(BOTANICALS_DB).map(k=>[k,""])));
+  const [results,setResults]=useState(null);
+
+  // ── GitHub auto-update config ────────────────────────────────────────────────────────────
+  // Aponte para o arquivo botanicals.json no seu repositório GitHub
+  // Exemplo: "https://raw.githubusercontent.com/SEU_USER/gin-lab/main/botanicals.json"
+  // Deixe "" para desabilitar
+  const GITHUB_RAW_URL = "";
+
+  useEffect(()=>{
+    (async()=>{
+      try{const r=await window.storage.get("gin_stock");if(r&&r.value)setStock(JSON.parse(r.value));}catch(e){}
+      try{const r=await window.storage.get("gin_custom_db");if(r&&r.value)setCustomDB(JSON.parse(r.value));}catch(e){}
+      setStockLoaded(true);
+    })();
+  },[]);
+
+  // ── Check GitHub silently on mount ───────────────────────────────────────────────────────
+  useEffect(()=>{
+    if(!GITHUB_RAW_URL) return;
+    (async()=>{
+      try {
+        const res = await fetch(GITHUB_RAW_URL+"?t="+Date.now());
+        if(!res.ok) return;
+        const data = await res.json();
+        if(!data.botanicals||!data.version) return;
+        let savedVer = DB_VERSION;
+        try{const r=await window.storage.get("gin_remote_db_version");if(r?.value)savedVer=r.value;}catch(e){}
+        if(data.version !== savedVer){
+          const newBots=Object.keys(data.botanicals).filter(n=>!BOTANICALS_DB[n]);
+          setUpdateBanner({version:data.version,count:newBots.length,total:Object.keys(data.botanicals).length,data,notes:data.releaseNotes||""});
+        }
+      } catch(e){}
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+
+  const applyGithubUpdate=useCallback(async(updateData)=>{
+    const newCustom={...customDB};
+    Object.entries(updateData.botanicals).forEach(([name,d])=>{
+      if(!BOTANICALS_DB[name]) newCustom[name]={inStock:false,hasReport:false,compounds:{},botData:d};
+    });
+    setCustomDB(newCustom);
+    try{
+      await window.storage.set("gin_custom_db",JSON.stringify(newCustom));
+      await window.storage.set("gin_remote_db_version",updateData.version);
+    }catch(e){}
+    setUpdateBanner(null);
+  },[customDB]);
+
+  const saveStock=useCallback(async(ns)=>{
+    setStock(ns);
+    try{await window.storage.set("gin_stock",JSON.stringify(ns));}catch(e){}
+    setShowStockModal(false);
+  },[]);
+
+  const saveCustomDB=useCallback(async(newCustom)=>{
+    setCustomDB(newCustom);
+    try{await window.storage.set("gin_custom_db",JSON.stringify(newCustom));}catch(e){}
+    setShowAdminModal(false);
+  },[]);
+
+  const allBotanicals=useMemo(()=>{
+    const all={...BOTANICALS_DB};
+    Object.entries(customDB).forEach(([name,d])=>{ if(d.botData) all[name]=d.botData; });
+    Object.entries(stock).forEach(([name,s])=>{if(s.botData&&!all[name])all[name]=s.botData;});
+    return all;
+  },[stock,customDB]);
+
+  const resolvedBotanicals=useMemo(()=>{
+    const res={};
+    Object.entries(allBotanicals).forEach(([name,info])=>{
+      const s=stock[name]||{};
+      const compounds=info.compounds.map(c=>{
+        const ov=s.hasReport&&s.compounds?.[c.name];
+        return ov!==undefined?{...c,conc:parseFloat(ov)}:c;
+      });
+      res[name]={...info,compounds,hasReport:s.hasReport,inStock:s.inStock};
+    });
+    return res;
+  },[allBotanicals,stock]);
+
+  const stockedBots=useMemo(()=>Object.keys(allBotanicals).filter(n=>stock[n]?.inStock),[allBotanicals,stock]);
+  const stockCount=stockedBots.length;
+
+  useEffect(()=>{
+    setGrams(p=>{const next={...p};Object.keys(allBotanicals).forEach(k=>{if(!(k in next))next[k]="";});return next;});
+  },[allBotanicals]);
+
+  // Which bots need Brix/pH fields (cocktail mode + right category + has quantity)
+  const needsBrixPh=useMemo(()=>{
+    if(mode!=="cocktail")return[];
+    return Object.keys(allBotanicals).filter(name=>{
+      const info=allBotanicals[name];
+      return CATS_WITH_BRIX_PH.includes(info.category)&&parseFloat(grams[name])>0;
+    });
+  },[mode,allBotanicals,grams]);
+
+  const visibleBots=useMemo(()=>{
+    const base=showAll?Object.keys(allBotanicals):(stockCount>0?stockedBots:Object.keys(allBotanicals));
+    return base.filter(name=>{
+      const info=allBotanicals[name];
+      const s=search.toLowerCase();
+      const matchS=!s||name.toLowerCase().includes(s)||info.compounds.some(c=>c.name.toLowerCase().includes(s));
+      const matchC=activeCat==="Todos"||(info.category===activeCat);
+      return matchS&&matchC;
+    });
+  },[allBotanicals,stockedBots,stockCount,showAll,search,activeCat]);
+
+  const activeCount=Object.values(grams).filter(v=>parseFloat(v)>0).length;
+  const allCategories=["Todos",...new Set(Object.values(allBotanicals).map(b=>b.category))];
+
+  const compute=()=>{
+    const aromas={},table=[];
+    const extractFactors=EXTRACTION[mode];
+
+    Object.entries(resolvedBotanicals).forEach(([bot,info])=>{
+      const g=parseFloat(grams[bot])||0;if(!g)return;
+      const cat=info.category||"Base";
+      const extractFactor=extractFactors[cat]||1.0;
+
+      // Brix/pH factors for cocktail mode
+      const fp=fruitParams[bot]||{};
+      const defaults=DEFAULT_BRIX_PH[bot]||{};
+      const brixVal=fp.brix!==""&&fp.brix!==undefined?parseFloat(fp.brix):(defaults.brix??null);
+      const phVal=fp.ph!==""&&fp.ph!==undefined?parseFloat(fp.ph):(defaults.ph??null);
+      const bxF=mode==="cocktail"&&CATS_WITH_BRIX_PH.includes(cat)?brixFactor(brixVal):1.0;
+
+      info.compounds.forEach(c=>{
+        // Destilação remove compostos não voláteis no modo gin
+        if(mode==="gin"&&DISTILLATION_REMOVED.has(c.name))return;
+
+        const phF=mode==="cocktail"&&CATS_WITH_BRIX_PH.includes(cat)?phFactor(phVal,c.aroma):1.0;
+        const mgL=(c.conc/100)*g*10*extractFactor*bxF*phF;
+        const thr=(c.min+c.max)/2;
+        const intensity=thr>0?Math.log10(1+mgL/thr)/Math.log10(101):0;
+        aromas[c.aroma]=(aromas[c.aroma]||0)+intensity;
+        table.push({bot,compound:c.name,conc:c.conc,mgL:mgL.toFixed(5),aroma:c.aroma,
+          threshold:`${c.min}–${c.max}`,intensity:Math.min(intensity,1).toFixed(4),
+          source:info.hasReport&&stock[bot]?.compounds?.[c.name]!==undefined?"laudo":"literatura",
+          extractFactor,bxF:bxF.toFixed(2),phF:phF.toFixed(2)});
+      });
+    });
+
+    const mx=Math.max(...Object.values(aromas),0.001);
+    const norm=Object.fromEntries(Object.entries(aromas).map(([k,v])=>[k,Math.min(v/mx,1)]));
+    setResults({aromas:norm,table:table.sort((a,b)=>parseFloat(b.intensity)-parseFloat(a.intensity)),mode});
+    setStep("results");
+  };
+
+  if(!stockLoaded)return(
+    <div style={{minHeight:"100vh",background:"#060c06",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Mono',monospace",color:"#305030",fontSize:12,letterSpacing:2}}>
+      CARREGANDO ESTOQUE...
+    </div>
+  );
+
+  const isCocktail=mode==="cocktail";
+
+  return(
+    <div style={{minHeight:"100vh",background:isCocktail?"linear-gradient(135deg,#0c0614 0%,#180c22 60%,#0d0816 100%)":"linear-gradient(135deg,#060c06 0%,#0c180c 60%,#060c09 100%)",fontFamily:"'DM Mono','Courier New',monospace",color:"#e0f0e0",transition:"background 0.5s"}}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Playfair+Display:wght@700&display=swap');
+        *{box-sizing:border-box;margin:0;padding:0}
+        ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:#060c06}::-webkit-scrollbar-thumb{background:#254525;border-radius:2px}
+        input[type=number]{-moz-appearance:textfield;background:#091409;border:1px solid #1c381c;color:#a0da60;padding:5px 8px;border-radius:6px;font-family:'DM Mono',monospace;font-size:13px;width:76px;outline:none;transition:border-color 0.2s}
+        input[type=number]:focus{border-color:#6aad3a;box-shadow:0 0 0 2px rgba(106,173,58,0.12)}
+        input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none}
+        .si{background:#091409;border:1px solid #1c381c;color:#a0da60;padding:8px 12px 8px 36px;border-radius:8px;font-family:'DM Mono',monospace;font-size:12px;width:100%;outline:none}
+        .si::placeholder{color:#274527}
+        .pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:500;letter-spacing:0.5px}
+        .cb{background:transparent;border:1px solid #1c381c;color:#3f6f3f;padding:4px 11px;border-radius:18px;cursor:pointer;font-family:'DM Mono',monospace;font-size:10px;transition:all 0.18s;white-space:nowrap}
+        .cb:hover{border-color:#5a9a3a;color:#90d060}.cb.on{background:#132813;border-color:#5a9a3a;color:#a0da60}
+        .btn{background:linear-gradient(135deg,#1c4a0c,#12300a);border:1px solid #3a7a1a;color:#a0da60;padding:10px 26px;border-radius:8px;cursor:pointer;font-family:'DM Mono',monospace;font-size:13px;letter-spacing:1px;text-transform:uppercase;transition:all 0.2s}
+        .btn:hover{background:linear-gradient(135deg,#2a5a18,#1c4a0c);transform:translateY(-1px);box-shadow:0 4px 14px rgba(100,170,50,0.18)}
+        .btn:disabled{opacity:0.3;cursor:not-allowed;transform:none;box-shadow:none}
+        .bc{background:rgba(7,16,7,0.85);border:1px solid #162a16;border-radius:10px;padding:11px 14px;display:flex;align-items:center;gap:10px;transition:all 0.18s}
+        .bc:hover{border-color:#274527}.bc.on{border-color:#385a18;background:rgba(9,20,7,0.95)}
+        table{border-collapse:collapse;width:100%;font-size:11px}
+        th{background:#050e05;color:#5a9a3a;padding:8px 10px;text-align:left;letter-spacing:0.8px;border-bottom:1px solid #122212;font-size:9px;text-transform:uppercase}
+        td{padding:6px 10px;border-bottom:1px solid #0b1b0b;color:#88b880;vertical-align:middle}
+        tr:hover td{background:rgba(160,218,96,0.025)}
+        .mode-btn{border:1px solid;border-radius:10px;cursor:pointer;font-family:'DM Mono',monospace;font-size:12px;padding:8px 20px;letter-spacing:0.5px;transition:all 0.25s;display:flex;align-items:center;gap:8px}
+      `}</style>
+
+      {showStockModal&&<StockModal stock={stock} onSave={saveStock} onClose={()=>setShowStockModal(false)}/>}
+      {showAdminModal&&<AdminPanel customDB={customDB} onUpdateDB={saveCustomDB} onClose={()=>setShowAdminModal(false)}/>}
+
+      {/* GitHub update banner */}
+      {updateBanner&&(
+        <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:500,background:"linear-gradient(135deg,#0a1e30,#060e1a)",border:"1px solid #2a5a8a",borderRadius:"12px 12px 0 0",padding:"12px 20px",display:"flex",alignItems:"center",gap:12,fontFamily:"'DM Mono',monospace",boxShadow:"0 -4px 24px rgba(0,100,200,0.15)"}}>
+          <span style={{fontSize:20}}>🔄</span>
+          <div style={{flex:1}}>
+            <div style={{fontSize:12,color:"#80c0f0",fontWeight:500}}>Nova versão do banco disponível — v{updateBanner.version}</div>
+            <div style={{fontSize:9,color:"#3a6a9a",marginTop:2}}>
+              {updateBanner.count} novos botânicos · {updateBanner.total} total{updateBanner.notes&&` · ${updateBanner.notes}`}
+            </div>
+          </div>
+          <button onClick={()=>applyGithubUpdate(updateBanner.data)}
+            style={{background:"linear-gradient(135deg,#1a4a7a,#0e2a4a)",border:"1px solid #3a7aaa",color:"#80c0f0",padding:"7px 18px",borderRadius:8,cursor:"pointer",fontFamily:"'DM Mono',monospace",fontSize:11,letterSpacing:0.5}}>
+            ⬇ Atualizar
+          </button>
+          <button onClick={()=>setUpdateBanner(null)}
+            style={{background:"transparent",border:"none",color:"#305060",fontSize:18,cursor:"pointer"}}>✕</button>
+        </div>
+      )}
+
+      {/* HEADER */}
+      <div style={{borderBottom:`1px solid ${isCocktail?"#261840":"#101e10"}`,padding:"16px 28px",background:isCocktail?"rgba(12,6,22,0.92)":"rgba(5,10,5,0.9)",backdropFilter:"blur(12px)",position:"sticky",top:0,zIndex:100}}>
+        <div style={{display:"flex",alignItems:"center",gap:14}}>
+          <span style={{fontSize:24}}>{isCocktail?"🍹":"🌿"}</span>
+          <div>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:19,fontWeight:700,color:isCocktail?"#c4a0e8":"#a0da60"}}>
+              {isCocktail?"Cocktail Aromatics Lab":"Gin Aromatics Lab"}
+            </div>
+            <div style={{fontSize:9,color:isCocktail?"#4a2870":"#305030",marginTop:1,letterSpacing:2,textTransform:"uppercase"}}>
+              {Object.keys(allBotanicals).length} botânicos · compostos voláteis · perfil aromático
+            </div>
+          </div>
+          <div style={{marginLeft:"auto",display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+            {activeCount>0&&<span style={{fontSize:10,color:isCocktail?"#9a6ad4":"#6aad3a",background:isCocktail?"#140828":"#091409",border:`1px solid ${isCocktail?"#3a1860":"#254525"}`,padding:"4px 12px",borderRadius:18}}>{activeCount} selecionado{activeCount>1?"s":""}</span>}
+            {step==="results"&&<button className="btn" style={{padding:"7px 15px",fontSize:11,background:isCocktail?"linear-gradient(135deg,#3a1060,#200840)":"",borderColor:isCocktail?"#6a30b0":""}} onClick={()=>setStep("input")}>← Editar</button>}
+            {step==="input"&&<button className="btn" disabled={!activeCount} style={{background:isCocktail?"linear-gradient(135deg,#3a1060,#200840)":"",borderColor:isCocktail?"#6a30b0":""}} onClick={compute}>Analisar →</button>}
+          </div>
+        </div>
+
+        {/* MODE SELECTOR */}
+        <div style={{marginTop:14,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+          <div style={{display:"flex",background:isCocktail?"rgba(20,8,38,0.8)":"rgba(5,14,5,0.8)",border:`1px solid ${isCocktail?"#3a1860":"#1a3a1a"}`,borderRadius:12,padding:4,gap:4}}>
+            <button className="mode-btn"
+              onClick={()=>setMode("gin")}
+              style={{background:!isCocktail?"linear-gradient(135deg,#1c4a0c,#12300a)":"transparent",
+                borderColor:!isCocktail?"#3a7a1a":"transparent",
+                color:!isCocktail?"#a0da60":"#305030"}}>
+              🌿 Gin / Destilado
+            </button>
+            <button className="mode-btn"
+              onClick={()=>setMode("cocktail")}
+              style={{background:isCocktail?"linear-gradient(135deg,#3a1060,#200840)":"transparent",
+                borderColor:isCocktail?"#6a30b0":"transparent",
+                color:isCocktail?"#c4a0e8":"#4a2870"}}>
+              🍹 Coquetel / Sem destilação
+            </button>
+          </div>
+
+          {isCocktail&&(
+            <div style={{fontSize:9,color:"#5a3090",background:"rgba(60,20,100,0.2)",border:"1px solid #3a1860",borderRadius:8,padding:"4px 12px",letterSpacing:0.5}}>
+              extração completa · polpa inteira · Brix e pH afetam o perfil
+            </div>
+          )}
+
+          <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:10}}>
+            <button onClick={()=>setShowStockModal(true)}
+              style={{background:isCocktail?"linear-gradient(135deg,#2a1050,#180628)":"linear-gradient(135deg,#1a3a0a,#102408)",
+                border:`1px solid ${isCocktail?"#5a28a0":"#3a7020"}`,
+                color:isCocktail?"#b080e8":"#8cd43a",padding:"6px 16px",borderRadius:8,cursor:"pointer",
+                fontFamily:"'DM Mono',monospace",fontSize:11,display:"flex",alignItems:"center",gap:7}}>
+              📦 Gerenciar Estoque
+              {stockCount>0&&<span style={{background:isCocktail?"#1a0830":"#0a2408",border:`1px solid ${isCocktail?"#3a1060":"#2a5010"}`,borderRadius:12,padding:"1px 7px",fontSize:9,color:isCocktail?"#9060c8":"#6aad3a"}}>{stockCount}</span>}
+            </button>
+            <button onClick={()=>setShowAdminModal(true)}
+              title="Painel Admin — banco de ingredientes"
+              style={{background:"linear-gradient(135deg,#1a2a1a,#0e1a0e)",border:"1px solid #2a4a2a",
+                color:"#5ada80",padding:"6px 12px",borderRadius:8,cursor:"pointer",
+                fontFamily:"'DM Mono',monospace",fontSize:11,display:"flex",alignItems:"center",gap:5}}>
+              🔬 Admin
+              {Object.keys(customDB).filter(n=>customDB[n]?.botData).length>0&&(
+                <span style={{background:"#0a1e10",border:"1px solid #1e4a2a",borderRadius:12,padding:"1px 6px",fontSize:9,color:"#4ada70"}}>
+                  +{Object.keys(customDB).filter(n=>customDB[n]?.botData).length}
+                </span>
+              )}
+            </button>
+            {stockCount>0&&step==="input"&&(
+              <button onClick={()=>setShowAll(p=>!p)}
+                style={{background:showAll?"rgba(100,20,20,0.3)":"transparent",border:`1px solid ${showAll?"#7a2020":"#3a2020"}`,color:showAll?"#e06060":"#6a3030",padding:"4px 12px",borderRadius:16,cursor:"pointer",fontFamily:"'DM Mono',monospace",fontSize:10}}>
+                {showAll?"🔴 ocultar catálogo":"🔴 catálogo completo"}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* INPUT */}
+      {step==="input"&&(
+        <div style={{maxWidth:1080,margin:"24px auto",padding:"0 18px"}}>
+
+          {/* MODE EXPLANATION CARD */}
+          <div style={{marginBottom:16,padding:"12px 16px",background:isCocktail?"rgba(40,10,70,0.4)":"rgba(5,20,5,0.4)",border:`1px solid ${isCocktail?"#3a1860":"#162a16"}`,borderRadius:10,fontSize:10,color:isCocktail?"#7a50a8":"#3a6a3a",lineHeight:1.8}}>
+            {isCocktail?(
+              <>
+                <strong style={{color:"#b080e8"}}>🍹 MODO COQUETEL</strong> — Sem destilação: todos os compostos da polpa estão presentes, incluindo ácidos orgânicos, antocianinas e taninos.
+                Fator de extração aumentado para frutas (×2.2) e flores (×1.4). <strong style={{color:"#9060c8"}}>Informe °Brix e pH</strong> dos ingredientes com polpa para refinamento do modelo — valores não informados usam médias da literatura.
+              </>
+            ):(
+              <>
+                <strong style={{color:"#a0da60"}}>🌿 MODO GIN</strong> — Destilação: compostos de alto ponto de ebulição são removidos (ácidos orgânicos, taninos, alcaloides).
+                Apenas voláteis sobem ao destilado. Concentrações inseridas em g/L representam a quantidade do botânico na maceração pré-destilação.
+              </>
+            )}
+          </div>
+
+          <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
+            <div style={{position:"relative",flex:"1",minWidth:200}}>
+              <span style={{position:"absolute",left:11,top:"50%",transform:"translateY(-50%)",fontSize:13,color:"#305030",pointerEvents:"none"}}>🔍</span>
+              <input className="si" type="text" placeholder="Buscar botânico ou composto aromático..." value={search} onChange={e=>setSearch(e.target.value)}/>
+            </div>
+            {search&&<button className="cb" onClick={()=>setSearch("")} style={{padding:"6px 12px"}}>✕</button>}
+          </div>
+
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16}}>
+            {allCategories.map(cat=>(
+              <button key={cat} className={`cb${activeCat===cat?" on":""}`} onClick={()=>setActiveCat(cat)}>{cat}</button>
+            ))}
+          </div>
+
+          <div style={{fontSize:9,color:showAll?"#6a3030":"#254525",letterSpacing:1.5,marginBottom:12,textTransform:"uppercase"}}>
+            {visibleBots.length} botânico{visibleBots.length!==1?"s":""} visível{visibleBots.length!==1?"is":""}
+            {showAll&&" — MODO CATÁLOGO COMPLETO"}
+          </div>
+
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(268px,1fr))",gap:8}}>
+            {visibleBots.map(bot=>{
+              const info=allBotanicals[bot];
+              const s=stock[bot]||{};
+              const isActive=parseFloat(grams[bot])>0;
+              const needFP=isCocktail&&CATS_WITH_BRIX_PH.includes(info.category)&&isActive;
+              const defaults=DEFAULT_BRIX_PH[bot]||{};
+              const fp=fruitParams[bot]||{};
+              const hasBrix=defaults.brix!==null&&defaults.brix!==undefined;
+
+              return(
+                <div key={bot} style={{borderRadius:10,overflow:"hidden",border:`1px solid ${isActive?(isCocktail?"#5a3090":"#385a18"):(showAll&&!s.inStock?"#2a1616":"#162a16")}`,background:isActive?(isCocktail?"rgba(20,8,40,0.95)":"rgba(9,20,7,0.95)"):(showAll&&!s.inStock?"rgba(16,8,8,0.7)":"rgba(7,16,7,0.85)")}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px"}}>
+                    <span style={{fontSize:19}}>{info.icon}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:11,color:isActive?(isCocktail?"#c090e8":"#90c860"):(showAll&&!s.inStock?"#5a3838":"#446044"),overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                        {bot}
+                        {s.hasReport&&<span style={{fontSize:8,color:"#4a8ac0",border:"1px solid #2a5070",padding:"1px 5px",borderRadius:6,marginLeft:5}}>📄</span>}
+                        {showAll&&!s.inStock&&<span style={{fontSize:8,color:"#6a3030",border:"1px solid #3a2020",padding:"1px 5px",borderRadius:6,marginLeft:5}}>sem estoque</span>}
+                      </div>
+                      <div style={{fontSize:9,color:isCocktail&&CATS_WITH_BRIX_PH.includes(info.category)?"#6040a0":"#1e3e1e"}}>
+                        {info.category} · {info.compounds?.slice(0,2).map(c=>c.name).join(" · ")}
+                        {isCocktail&&CATS_WITH_BRIX_PH.includes(info.category)&&<span style={{color:"#7050b0",marginLeft:4}}>· Brix/pH</span>}
+                      </div>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
+                      <input type="number" min="0" step="0.1" placeholder="0"
+                        value={grams[bot]||""} onChange={e=>setGrams(p=>({...p,[bot]:e.target.value}))}
+                        style={{background:isCocktail&&isActive?"#150830":undefined,borderColor:isCocktail&&isActive?"#5a28a0":undefined}}/>
+                      <span style={{fontSize:9,color:"#1e3e1e"}}>g/L</span>
+                    </div>
+                  </div>
+
+                  {/* Brix/pH inputs — cocktail mode, fruits/citrus/flowers only, when quantity > 0 */}
+                  {needFP&&(
+                    <div style={{borderTop:`1px solid ${isCocktail?"#2a1050":"#162a16"}`,padding:"8px 14px",background:"rgba(20,5,40,0.6)",display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+                      {hasBrix&&(
+                        <div style={{display:"flex",alignItems:"center",gap:5}}>
+                          <span style={{fontSize:9,color:"#7050b0",letterSpacing:0.5}}>°Brix</span>
+                          <input type="number" min="0" max="35" step="0.1"
+                            placeholder={defaults.brix!=null?`${defaults.brix} lit.`:"—"}
+                            value={fp.brix||""}
+                            onChange={e=>setFruitParams(p=>({...p,[bot]:{...p[bot],brix:e.target.value}}))}
+                            style={{width:68,background:"#0e0620",border:`1px solid ${fp.brix?"#7040c0":"#2a1050"}`,color:"#c090e8",borderRadius:6,padding:"4px 7px",fontFamily:"'DM Mono',monospace",fontSize:11,outline:"none"}}/>
+                        </div>
+                      )}
+                      <div style={{display:"flex",alignItems:"center",gap:5}}>
+                        <span style={{fontSize:9,color:"#7050b0",letterSpacing:0.5}}>pH</span>
+                        <input type="number" min="1.5" max="8" step="0.1"
+                          placeholder={defaults.ph!=null?`${defaults.ph} lit.`:"—"}
+                          value={fp.ph||""}
+                          onChange={e=>setFruitParams(p=>({...p,[bot]:{...p[bot],ph:e.target.value}}))}
+                          style={{width:58,background:"#0e0620",border:`1px solid ${fp.ph?"#7040c0":"#2a1050"}`,color:"#c090e8",borderRadius:6,padding:"4px 7px",fontFamily:"'DM Mono',monospace",fontSize:11,outline:"none"}}/>
+                      </div>
+                      {(fp.brix||fp.ph)&&(
+                        <button onClick={()=>setFruitParams(p=>({...p,[bot]:{}}))}
+                          style={{background:"transparent",border:"none",color:"#5a3070",fontSize:10,cursor:"pointer",padding:0}}>
+                          ↺ lit.
+                        </button>
+                      )}
+                      {!fp.brix&&!fp.ph&&<span style={{fontSize:8,color:"#4a2870",fontStyle:"italic"}}>usando literatura</span>}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {visibleBots.length===0&&(
+            <div style={{textAlign:"center",padding:"52px 0",color:"#254525",fontSize:12}}>
+              {stockCount>0&&!showAll?"Nenhum ingrediente do estoque corresponde à busca.":"Nenhum botânico encontrado."}
+            </div>
+          )}
+
+          {/* Brix/pH summary panel if cocktail mode and has fruits selected */}
+          {isCocktail&&needsBrixPh.length>0&&(
+            <div style={{marginTop:16,padding:"12px 16px",background:"rgba(30,10,55,0.5)",border:"1px solid #3a1860",borderRadius:10}}>
+              <div style={{fontSize:9,color:"#7050b0",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Parâmetros de Polpa — Frutas/Cítricos/Flores Selecionados</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                {needsBrixPh.map(bot=>{
+                  const fp=fruitParams[bot]||{};
+                  const def=DEFAULT_BRIX_PH[bot]||{};
+                  const hasBrix=def.brix!==null&&def.brix!==undefined;
+                  return(
+                    <div key={bot} style={{display:"flex",alignItems:"center",gap:8,background:"rgba(15,5,30,0.8)",border:"1px solid #2a1050",borderRadius:8,padding:"6px 12px",fontSize:10}}>
+                      <span>{allBotanicals[bot]?.icon}</span>
+                      <span style={{color:"#9060c8"}}>{bot}</span>
+                      {hasBrix&&<span style={{color:fp.brix?"#c090e8":"#4a2870"}}>°Brix: {fp.brix||`~${def.brix}`}</span>}
+                      <span style={{color:fp.ph?"#c090e8":"#4a2870"}}>pH: {fp.ph||`~${def.ph}`}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div style={{textAlign:"center",marginTop:28,paddingBottom:32}}>
+            <button className="btn" disabled={!activeCount}
+              style={{background:isCocktail?"linear-gradient(135deg,#3a1060,#200840)":"",borderColor:isCocktail?"#6a30b0":""}}
+              onClick={compute}>
+              {isCocktail?"🍹 Gerar Perfil do Coquetel →":"🌿 Gerar Perfil Aromático →"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* RESULTS */}
+      {step==="results"&&results&&(
+        <div style={{maxWidth:1120,margin:"26px auto",padding:"0 18px 48px"}}>
+          {/* Mode badge */}
+          <div style={{marginBottom:16,display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontSize:11,color:results.mode==="cocktail"?"#b080e8":"#a0da60",background:results.mode==="cocktail"?"rgba(40,10,70,0.5)":"rgba(10,25,10,0.5)",border:`1px solid ${results.mode==="cocktail"?"#5a28a0":"#2a5a1a"}`,padding:"4px 14px",borderRadius:18,letterSpacing:1}}>
+              {results.mode==="cocktail"?"🍹 Coquetel — Extração Completa":"🌿 Gin — Perfil Destilado"}
+            </span>
+          </div>
+
+          <div style={{display:"grid",gridTemplateColumns:"420px 1fr",gap:22,alignItems:"start"}}>
+            <div style={{background:"rgba(5,12,5,0.92)",border:"1px solid #142014",borderRadius:16,padding:20}}>
+              <div style={{fontSize:9,color:"#305030",letterSpacing:2.5,textTransform:"uppercase",marginBottom:12}}>Perfil Aromático — Radar</div>
+              <div style={{display:"flex",justifyContent:"center"}}><RadarChart data={results.aromas} size={390}/></div>
+              <div style={{marginTop:16,display:"flex",flexWrap:"wrap",gap:5}}>
+                {AROMA_CATEGORIES.filter(a=>(results.aromas[a]||0)>0.04).sort((a,b)=>(results.aromas[b]||0)-(results.aromas[a]||0)).map(a=>(
+                  <span key={a} className="pill" style={{background:`${AROMA_COLORS[a]}18`,color:AROMA_COLORS[a],border:`1px solid ${AROMA_COLORS[a]}40`}}>
+                    {a} {Math.round((results.aromas[a]||0)*100)}%
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:14}}>
+              <div style={{background:"rgba(5,12,5,0.92)",border:"1px solid #142014",borderRadius:16,padding:18}}>
+                <div style={{fontSize:9,color:"#305030",letterSpacing:2.5,textTransform:"uppercase",marginBottom:12}}>Composição da Receita</div>
+                {Object.entries(grams).filter(([,v])=>parseFloat(v)>0).sort(([,a],[,b])=>parseFloat(b)-parseFloat(a)).map(([bot,v])=>{
+                  const fp=fruitParams[bot]||{};const def=DEFAULT_BRIX_PH[bot]||{};
+                  const info=allBotanicals[bot];
+                  const showFP=results.mode==="cocktail"&&info&&CATS_WITH_BRIX_PH.includes(info.category);
+                  return(
+                    <div key={bot} style={{padding:"6px 0",borderBottom:"1px solid #0b1b0b",fontSize:11}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <span style={{color:"#74b848"}}>{allBotanicals[bot]?.icon} {bot}{resolvedBotanicals[bot]?.hasReport&&<span style={{fontSize:8,color:"#4a8ac0",marginLeft:5}}>📄</span>}</span>
+                        <span style={{color:"#a0da60",fontWeight:500}}>{v} g/L</span>
+                      </div>
+                      {showFP&&(
+                        <div style={{fontSize:8,color:"#5a3090",marginTop:2}}>
+                          {def.brix!=null&&`°Brix: ${fp.brix||`~${def.brix} lit.`}`}
+                          {def.brix!=null&&" · "}
+                          {`pH: ${fp.ph||`~${def.ph} lit.`}`}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{background:"rgba(5,12,5,0.92)",border:"1px solid #142014",borderRadius:16,padding:18}}>
+                <div style={{fontSize:9,color:"#305030",letterSpacing:2.5,textTransform:"uppercase",marginBottom:14}}>Aromas Dominantes</div>
+                {Object.entries(results.aromas).sort(([,a],[,b])=>b-a).slice(0,9).map(([aroma,val])=>(
+                  <div key={aroma} style={{marginBottom:9}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:3,fontSize:11}}>
+                      <span style={{color:AROMA_COLORS[aroma]||"#a0da60"}}>{aroma}</span>
+                      <span style={{color:"#305030"}}>{(val*100).toFixed(1)}%</span>
+                    </div>
+                    <div style={{height:3,background:"#091409",borderRadius:2,overflow:"hidden"}}>
+                      <div style={{height:"100%",width:`${val*100}%`,borderRadius:2,background:`linear-gradient(90deg,${AROMA_COLORS[aroma]||"#a0da60"}77,${AROMA_COLORS[aroma]||"#a0da60"})`}}/>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div style={{background:"rgba(5,12,5,0.92)",border:"1px solid #142014",borderRadius:16,padding:20,marginTop:20}}>
+            <div style={{fontSize:9,color:"#305030",letterSpacing:2.5,textTransform:"uppercase",marginBottom:14}}>Tabela de Compostos — Estimativa no Produto</div>
+            <div style={{overflowX:"auto"}}>
+              <table>
+                <thead><tr>
+                  <th>Botânico</th><th>Composto</th><th>Conc. bot.</th><th>Est. produto</th>
+                  <th>Aroma</th><th>Limiar (mg/L)</th>
+                  {results.mode==="cocktail"&&<th>Fatores</th>}
+                  <th>Fonte</th><th>Intensidade</th>
+                </tr></thead>
+                <tbody>
+                  {results.table.map((row,i)=>(
+                    <tr key={i}>
+                      <td style={{color:"#5a9838"}}>{allBotanicals[row.bot]?.icon} {row.bot}</td>
+                      <td style={{color:"#b0d898"}}>{row.compound}</td>
+                      <td style={{color:"#708860"}}>{row.conc}%</td>
+                      <td style={{color:"#a0da60",fontWeight:500}}>{row.mgL} mg/L</td>
+                      <td><span className="pill" style={{background:`${AROMA_COLORS[row.aroma]||"#888"}16`,color:AROMA_COLORS[row.aroma]||"#888",border:`1px solid ${AROMA_COLORS[row.aroma]||"#888"}40`}}>{row.aroma}</span></td>
+                      <td style={{color:"#305030",fontSize:10}}>{row.threshold}</td>
+                      {results.mode==="cocktail"&&(
+                        <td style={{fontSize:9,color:"#5a3090"}}>
+                          ×{row.extractFactor}ext
+                          {row.bxF!=="1.00"&&<span style={{marginLeft:4,color:"#7050b0"}}>Bx×{row.bxF}</span>}
+                          {row.phF!=="1.00"&&<span style={{marginLeft:4,color:"#9060c8"}}>pH×{row.phF}</span>}
+                        </td>
+                      )}
+                      <td><span style={{fontSize:9,color:row.source==="laudo"?"#4a8ac0":"#3a5a3a",border:`1px solid ${row.source==="laudo"?"#2a4a6a":"#1e3a1e"}`,padding:"1px 7px",borderRadius:8}}>{row.source==="laudo"?"📄 laudo":"📊 lit."}</span></td>
+                      <td>
+                        <div style={{display:"flex",alignItems:"center",gap:6}}>
+                          <div style={{width:42,height:3,background:"#091409",borderRadius:2,overflow:"hidden"}}>
+                            <div style={{height:"100%",width:`${Math.min(parseFloat(row.intensity)*100,100)}%`,background:AROMA_COLORS[row.aroma]||"#a0da60",borderRadius:2}}/>
+                          </div>
+                          <span style={{color:"#305030",fontSize:10}}>{row.intensity}</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div style={{marginTop:16,padding:"10px 14px",background:"rgba(5,12,5,0.6)",border:"1px solid #0e220e",borderRadius:8,fontSize:9,color:"#254525",lineHeight:2}}>
+            <strong style={{color:"#3a7a3a"}}>METODOLOGIA —</strong>
+            {results.mode==="cocktail"?(
+              <> Coquetel: conc.% × g/L × 10 × fator_extração × fator_Brix × fator_pH = mg/L estimado.
+              Brix modela ancoragem de voláteis na matriz de açúcares [f=1/(1+Brix/100×0.8)].
+              pH modula percepção de aromas ácidos e florais centrado em pH 3.5.
+              Compostos não voláteis (ácidos orgânicos, antocianinas, taninos) incluídos.
+              Fatores de extração por categoria: Frutas ×2.2, Flores ×1.4, Ervas ×1.1. 📄 = laudo GC-MS. 📊 = literatura.</>
+            ):(
+              <> Gin/Destilado: conc.% × g/L × 10 × fator_extração = mg/L. Compostos não voláteis removidos pela destilação.
+              Intensidade via log₁₀ relativo ao limiar médio (min+max)/2. 📄 = laudo GC-MS. 📊 = literatura.</>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(React.createElement(App));
+  </script>
+</body>
+</html>
