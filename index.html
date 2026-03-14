@@ -15,29 +15,23 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body, #root { height: 100%; }
     body { background: #060c06; color: #e0f0e0; overflow-x: hidden; }
-    #install-banner {
-      display: none; position: fixed; bottom: 0; left: 0; right: 0; z-index: 9999;
-      background: linear-gradient(135deg,#0d2208,#091609);
-      border-top: 1px solid #2a5a1a;
-      padding: 12px 20px; align-items: center; gap: 12px;
-      font-family: 'DM Mono', monospace; font-size: 12px; color: #a0da60;
-    }
-    #install-banner.visible { display: flex; }
-    #install-banner button {
-      background: linear-gradient(135deg,#1c4a0c,#12300a); border: 1px solid #3a7a1a;
-      color: #a0da60; padding: 7px 18px; border-radius: 7px; cursor: pointer;
-      font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 0.5px;
-    }
-    #install-close { margin-left: auto; background: transparent; border: none; color: #305030; font-size: 18px; cursor: pointer; }
-    #offline-bar { display: none; position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
-      background: #3a1a0a; border-bottom: 1px solid #7a3a1a; padding: 6px; text-align: center;
-      font-family: 'DM Mono', monospace; font-size: 10px; color: #d07040; letter-spacing: 1px; }
+    #install-banner { display:none; position:fixed; bottom:0; left:0; right:0; z-index:9999;
+      background:linear-gradient(135deg,#0d2208,#091609); border-top:1px solid #2a5a1a;
+      padding:12px 20px; align-items:center; gap:12px;
+      font-family:'DM Mono',monospace; font-size:12px; color:#a0da60; }
+    #install-banner.visible { display:flex; }
+    #install-banner button { background:linear-gradient(135deg,#1c4a0c,#12300a); border:1px solid #3a7a1a;
+      color:#a0da60; padding:7px 18px; border-radius:7px; cursor:pointer;
+      font-family:'DM Mono',monospace; font-size:11px; letter-spacing:0.5px; }
+    #install-close { margin-left:auto; background:transparent; border:none; color:#305030; font-size:18px; cursor:pointer; }
+    #offline-bar { display:none; position:fixed; top:0; left:0; right:0; z-index:9998;
+      background:#3a1a0a; border-bottom:1px solid #7a3a1a; padding:6px; text-align:center;
+      font-family:'DM Mono',monospace; font-size:10px; color:#d07040; letter-spacing:1px; }
   </style>
 </head>
 <body>
   <div id="offline-bar">⚡ MODO OFFLINE — dados locais</div>
   <div id="root"></div>
-
   <div id="install-banner">
     <span>🌿</span>
     <div>
@@ -48,73 +42,44 @@
     <button id="install-close">✕</button>
   </div>
 
+  <!-- Core deps -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- jsPDF for PDF export -->
+  <script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 
   <script>
     // Service Worker
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
+    if('serviceWorker' in navigator){
+      window.addEventListener('load',()=>{
         navigator.serviceWorker.register('sw.js')
-          .then(r => console.log('[SW]', r.scope))
-          .catch(e => console.warn('[SW] error', e));
+          .then(r=>console.log('[SW]',r.scope))
+          .catch(e=>console.warn('[SW]',e));
       });
     }
-
-    // Offline indicator
-    function updateOnlineStatus() {
-      document.getElementById('offline-bar').style.display = navigator.onLine ? 'none' : 'block';
-    }
-    window.addEventListener('online', updateOnlineStatus);
-    window.addEventListener('offline', updateOnlineStatus);
+    // Offline
+    function updateOnlineStatus(){ document.getElementById('offline-bar').style.display=navigator.onLine?'none':'block'; }
+    window.addEventListener('online',updateOnlineStatus);
+    window.addEventListener('offline',updateOnlineStatus);
     updateOnlineStatus();
-
-    // PWA Install
+    // PWA install
     let deferredPrompt;
-    const banner = document.getElementById('install-banner');
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault(); deferredPrompt = e;
-      banner.classList.add('visible');
+    const banner=document.getElementById('install-banner');
+    window.addEventListener('beforeinstallprompt',(e)=>{ e.preventDefault(); deferredPrompt=e; banner.classList.add('visible'); });
+    document.getElementById('install-btn').addEventListener('click',async()=>{
+      if(!deferredPrompt)return; deferredPrompt.prompt(); await deferredPrompt.userChoice;
+      deferredPrompt=null; banner.classList.remove('visible');
     });
-    document.getElementById('install-btn').addEventListener('click', async () => {
-      if (!deferredPrompt) return;
-      deferredPrompt.prompt();
-      await deferredPrompt.userChoice;
-      deferredPrompt = null; banner.classList.remove('visible');
-    });
-    document.getElementById('install-close').addEventListener('click', () => banner.classList.remove('visible'));
-    window.addEventListener('appinstalled', () => { banner.classList.remove('visible'); deferredPrompt = null; });
-
-    // Storage — localStorage with in-memory fallback
-    window.storage = {
-      _store: {},
-      async get(key) {
-        try {
-          const raw = localStorage.getItem('ginlab_' + key);
-          if (raw === null) throw new Error('not found');
-          return { key, value: raw };
-        } catch(e) {
-          if (this._store[key] !== undefined) return { key, value: this._store[key] };
-          throw e;
-        }
-      },
-      async set(key, value) {
-        this._store[key] = value;
-        try { localStorage.setItem('ginlab_' + key, value); } catch(e) {}
-        return { key, value };
-      },
-      async delete(key) {
-        delete this._store[key];
-        try { localStorage.removeItem('ginlab_' + key); } catch(e) {}
-        return { key, deleted: true };
-      },
-      async list(prefix) {
-        const keys = Object.keys(localStorage)
-          .filter(k => k.startsWith('ginlab_' + (prefix||'')))
-          .map(k => k.replace('ginlab_', ''));
-        return { keys };
-      }
+    document.getElementById('install-close').addEventListener('click',()=>banner.classList.remove('visible'));
+    window.addEventListener('appinstalled',()=>{ banner.classList.remove('visible'); deferredPrompt=null; });
+    // Storage
+    window.storage={
+      _store:{},
+      async get(key){ try{ const raw=localStorage.getItem('ginlab_'+key); if(raw===null)throw new Error('not found'); return{key,value:raw}; }catch(e){ if(this._store[key]!==undefined)return{key,value:this._store[key]}; throw e; } },
+      async set(key,value){ this._store[key]=value; try{localStorage.setItem('ginlab_'+key,value);}catch(e){} return{key,value}; },
+      async delete(key){ delete this._store[key]; try{localStorage.removeItem('ginlab_'+key);}catch(e){} return{key,deleted:true}; },
+      async list(prefix){ const keys=Object.keys(localStorage).filter(k=>k.startsWith('ginlab_'+(prefix||''))).map(k=>k.replace('ginlab_','')); return{keys}; }
     };
   </script>
 
@@ -291,6 +256,348 @@ function phFactor(ph, aromaType) {
   if (acidAromas.has(aromaType)) return Math.max(0.5, 1.3 - delta * 0.15);
   if (baseAromas.has(aromaType)) return Math.max(0.7, 0.8 + delta * 0.1);
   return 1.0;
+}
+
+// ─── PDF GENERATOR ───────────────────────────────────────────────────────────
+// Gera PDF completo: capa + radar SVG + aromas + compostos
+// Usa jsPDF via CDN (carregado no index.html)
+function generatePDF(results, allBotanicals, grams, fruitParams, resolvedBotanicals, stock, mode) {
+  const isCocktail = mode === "cocktail";
+
+  // ── Build SVG radar string for embedding ─────────────────────────────────
+  function buildRadarSVG(data, size) {
+    const active = AROMA_CATEGORIES.filter(a => (data[a]||0) > 0.02);
+    const labels = active.length >= 4 ? active : AROMA_CATEGORIES.slice(0, 12);
+    const n = labels.length, cx = size/2, cy = size/2, r = size * 0.33;
+    const as = (2 * Math.PI) / n;
+    const pt = (i, rad) => ({
+      x: cx + rad * Math.sin(i * as - Math.PI/2),
+      y: cy - rad * Math.cos(i * as - Math.PI/2)
+    });
+    const poly = (lvl) => labels.map((_,i) => { const p = pt(i,r*lvl); return `${p.x},${p.y}`; }).join(' ');
+    const dataPts = labels.map((lbl,i) => { const v = Math.min(data[lbl]||0,1); const p = pt(i,r*v); return `${p.x},${p.y}`; }).join(' ');
+
+    let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" style="background:#060c06">`;
+    svg += `<defs><radialGradient id="rg" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="rgba(168,224,99,0.25)"/><stop offset="100%" stop-color="rgba(168,224,99,0.05)"/></radialGradient></defs>`;
+    [0.2,0.4,0.6,0.8,1.0].forEach(lvl => {
+      svg += `<polygon points="${poly(lvl)}" fill="none" stroke="${lvl===1?'rgba(255,255,255,0.18)':'rgba(255,255,255,0.07)'}" stroke-width="${lvl===1?1.5:1}"/>`;
+    });
+    labels.forEach((_,i) => { const o = pt(i,r); svg += `<line x1="${cx}" y1="${cy}" x2="${o.x}" y2="${o.y}" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>`; });
+    svg += `<polygon points="${dataPts}" fill="url(#rg)" stroke="#8cd43a" stroke-width="2.5" stroke-linejoin="round"/>`;
+    labels.forEach((lbl,i) => {
+      const v = Math.min(data[lbl]||0,1); const p = pt(i,r*v);
+      svg += `<circle cx="${p.x}" cy="${p.y}" r="${v>0.05?5:2}" fill="${AROMA_COLORS[lbl]||'#a8e063'}" stroke="#060c06" stroke-width="1.5"/>`;
+    });
+    labels.forEach((lbl,i) => {
+      const p = pt(i,r*1.26);
+      const anchor = p.x < cx-8 ? 'end' : p.x > cx+8 ? 'start' : 'middle';
+      svg += `<text x="${p.x}" y="${p.y+4}" text-anchor="${anchor}" font-size="9" font-family="monospace" fill="${AROMA_COLORS[lbl]||'#bbb'}" font-weight="600">${lbl}</text>`;
+    });
+    svg += '</svg>';
+    return svg;
+  }
+
+  // ── Convert SVG to PNG dataURL via canvas ──────────────────────────────
+  function svgToPng(svgStr, size, cb) {
+    const blob = new Blob([svgStr], {type:'image/svg+xml;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = size * 2; canvas.height = size * 2; // 2x for quality
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#060c06';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      cb(canvas.toDataURL('image/png'));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); cb(null); };
+    img.src = url;
+  }
+
+  // ── Actual PDF build ──────────────────────────────────────────────────
+  function buildPDF(radarPng) {
+    const { jsPDF } = window.jspdf;
+    if (!jsPDF) { alert('jsPDF não carregado. Verifique a conexão.'); return; }
+
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const W = 210, H = 297;
+    const margin = 18;
+    const contentW = W - margin * 2;
+
+    // ── Helpers ──────────────────────────────────────────────────────────
+    const hex2rgb = hex => {
+      const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+      return [r,g,b];
+    };
+    const setColor = (hex, type='fill') => {
+      const [r,g,b] = hex2rgb(hex);
+      if(type==='fill') doc.setFillColor(r,g,b);
+      else doc.setTextColor(r,g,b);
+    };
+
+    // ─────────────────────────────────────────────────────────────────────
+    // PÁGINA 1 — CAPA + RADAR + AROMAS
+    // ─────────────────────────────────────────────────────────────────────
+
+    // Background
+    setColor('#060c06'); doc.rect(0, 0, W, H, 'F');
+
+    // Header band
+    setColor(isCocktail ? '#1a0838' : '#081408'); doc.rect(0, 0, W, 52, 'F');
+
+    // Accent line
+    setColor(isCocktail ? '#7a40c0' : '#4a8a20'); doc.rect(0, 52, W, 0.8, 'F');
+
+    // Title
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(26);
+    setColor(isCocktail ? '#c4a0e8' : '#a0da60', 'text');
+    doc.text(isCocktail ? 'Cocktail Aromatics Lab' : 'Gin Aromatics Lab', margin, 22);
+
+    // Subtitle
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    setColor(isCocktail ? '#7a50a8' : '#3a7a3a', 'text');
+    doc.text(isCocktail ? 'Perfil de Coquetel — Extração Completa' : 'Perfil de Destilado — Gin', margin, 32);
+
+    // Date + version
+    doc.setFontSize(8);
+    setColor('#254525', 'text');
+    const now = new Date();
+    doc.text(`Gerado em ${now.toLocaleDateString('pt-BR')} ${now.toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'})}  ·  Gin Aromatics Lab v${typeof DB_VERSION !== 'undefined' ? DB_VERSION : '1.0'}`, margin, 42);
+
+    // Recipe summary (right side of header)
+    const recipe = Object.entries(grams).filter(([,v])=>parseFloat(v)>0).sort(([,a],[,b])=>parseFloat(b)-parseFloat(a));
+    doc.setFontSize(8); setColor('#5a9a3a', 'text');
+    doc.text(`${recipe.length} ingrediente${recipe.length>1?'s':''}`, W - margin, 22, {align:'right'});
+    doc.setFontSize(7); setColor('#305030', 'text');
+    recipe.slice(0, 4).forEach(([bot, v], i) => {
+      doc.text(`${allBotanicals[bot]?.icon||''} ${bot} · ${v} g/L`, W - margin, 30 + i * 5.5, {align:'right'});
+    });
+    if(recipe.length > 4) doc.text(`+${recipe.length-4} mais...`, W - margin, 30 + 4*5.5, {align:'right'});
+
+    let y = 60;
+
+    // ── RADAR CHART ───────────────────────────────────────────────────────
+    doc.setFontSize(8); doc.setFont('helvetica', 'bold');
+    setColor('#3a7a3a', 'text');
+    doc.text('PERFIL AROMÁTICO', margin, y); y += 5;
+
+    if (radarPng) {
+      const radarSize = 88;
+      doc.addImage(radarPng, 'PNG', margin, y, radarSize, radarSize);
+
+      // Dominant aromas legend (right of radar)
+      const legendX = margin + radarSize + 8;
+      const dominants = AROMA_CATEGORIES
+        .filter(a => (results.aromas[a]||0) > 0.04)
+        .sort((a,b) => (results.aromas[b]||0) - (results.aromas[a]||0))
+        .slice(0, 12);
+
+      doc.setFontSize(7); doc.setFont('helvetica', 'bold');
+      setColor('#5a9a3a', 'text');
+      doc.text('AROMAS DOMINANTES', legendX, y + 4);
+
+      dominants.forEach((aroma, i) => {
+        const val = results.aromas[aroma] || 0;
+        const barY = y + 10 + i * 7;
+        const barW = (contentW - radarSize - 8) * 0.55;
+        const fillW = barW * val;
+        const [r,g,b] = hex2rgb(AROMA_COLORS[aroma] || '#a0da60');
+
+        // Bar background
+        doc.setFillColor(20,30,20); doc.rect(legendX, barY + 2, barW, 3, 'F');
+        // Bar fill
+        doc.setFillColor(r,g,b); doc.rect(legendX, barY + 2, fillW, 3, 'F');
+        // Label
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5);
+        doc.setTextColor(r,g,b);
+        doc.text(aroma, legendX, barY + 0.5);
+        // Percentage
+        doc.setTextColor(80,120,80); doc.setFontSize(6);
+        doc.text(`${Math.round(val*100)}%`, legendX + barW + 2, barY + 3.5);
+      });
+
+      y += radarSize + 6;
+    } else {
+      y += 6;
+    }
+
+    // ── AROMA PILLS ──────────────────────────────────────────────────────
+    doc.setDrawColor(20,50,20);
+    const pills = AROMA_CATEGORIES.filter(a=>(results.aromas[a]||0)>0.04)
+      .sort((a,b)=>(results.aromas[b]||0)-(results.aromas[a]||0));
+    let pillX = margin; const pillY = y; const pillH = 5.5;
+    pills.forEach(aroma => {
+      const label = `${aroma} ${Math.round((results.aromas[aroma]||0)*100)}%`;
+      doc.setFontSize(6.5); doc.setFont('helvetica', 'normal');
+      const tw = doc.getTextWidth(label);
+      const pw = tw + 5;
+      if(pillX + pw > W - margin) { pillX = margin; y += pillH + 2; }
+      const [r,g,b] = hex2rgb(AROMA_COLORS[aroma]||'#a0da60');
+      doc.setFillColor(r*0.12,g*0.12,b*0.12);
+      doc.setDrawColor(r*0.5,g*0.5,b*0.5);
+      doc.roundedRect(pillX, y - 3.5, pw, pillH, 1.5, 1.5, 'FD');
+      doc.setTextColor(r,g,b);
+      doc.text(label, pillX + 2.5, y + 0.5);
+      pillX += pw + 2.5;
+    });
+    y += pillH + 4;
+
+    // ── RECEITA ──────────────────────────────────────────────────────────
+    y += 2;
+    setColor('#081408'); doc.rect(margin - 3, y - 4, contentW + 6, 8, 'F');
+    doc.setFontSize(7.5); doc.setFont('helvetica', 'bold');
+    setColor('#4a8a20', 'text');
+    doc.text('COMPOSIÇÃO DA RECEITA', margin, y + 0.5); y += 8;
+
+    // Recipe as two-column grid
+    const colW = contentW / 2 - 3;
+    recipe.forEach(([bot, v], i) => {
+      const col = i % 2;
+      const rx = margin + col * (colW + 6);
+      const ry = y + Math.floor(i/2) * 7;
+      // Background
+      setColor('#0a180a'); doc.rect(rx - 1, ry - 3, colW + 2, 6, 'F');
+      // Dot color based on category
+      const info = allBotanicals[bot];
+      doc.setFontSize(7); doc.setFont('helvetica', 'normal');
+      setColor('#74b848', 'text');
+      const label = `${info?.icon||''} ${bot}`.slice(0,26);
+      doc.text(label, rx + 1, ry + 0.5);
+      setColor('#a0da60', 'text'); doc.setFont('helvetica', 'bold');
+      doc.text(`${v} g/L`, rx + colW - 1, ry + 0.5, {align:'right'});
+      // Brix/pH if cocktail
+      if(isCocktail && info && ['Frutas','Cítricos','Flores'].includes(info.category)) {
+        const fp = fruitParams[bot]||{};
+        doc.setFont('helvetica','normal'); doc.setFontSize(5.5); setColor('#5a3090','text');
+        const bpLabel = [fp.brix&&`°Brix:${fp.brix}`, fp.ph&&`pH:${fp.ph}`].filter(Boolean).join(' · ');
+        if(bpLabel) doc.text(bpLabel, rx + 1, ry + 4.5);
+      }
+    });
+
+    y += Math.ceil(recipe.length/2) * 7 + 4;
+
+    // ─────────────────────────────────────────────────────────────────────
+    // PÁGINA 2 — TABELA DE COMPOSTOS
+    // ─────────────────────────────────────────────────────────────────────
+    doc.addPage();
+    setColor('#060c06'); doc.rect(0,0,W,H,'F');
+
+    // Header band p2
+    setColor(isCocktail?'#1a0838':'#081408'); doc.rect(0,0,W,18,'F');
+    setColor(isCocktail?'#7a40c0':'#4a8a20'); doc.rect(0,18,W,0.5,'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(10);
+    setColor(isCocktail?'#c4a0e8':'#a0da60','text');
+    doc.text('TABELA DE COMPOSTOS — Estimativa no Produto', margin, 12);
+    doc.setFont('helvetica','normal'); doc.setFontSize(7); setColor('#305030','text');
+    doc.text(`${results.table.length} compostos · método logarítmico · limiares de percepção`, W-margin, 12, {align:'right'});
+
+    y = 26;
+
+    // Table header
+    const cols = isCocktail
+      ? [{label:'Botânico',x:margin,w:38},{label:'Composto',x:margin+38,w:36},{label:'Conc.',x:margin+74,w:14},{label:'mg/L',x:margin+88,w:18},{label:'Aroma',x:margin+106,w:22},{label:'Limiar',x:margin+128,w:24},{label:'Fat.',x:margin+152,w:12},{label:'Fonte',x:margin+164,w:14},{label:'Intensidade',x:margin+178,w:14}]
+      : [{label:'Botânico',x:margin,w:42},{label:'Composto',x:margin+42,w:38},{label:'Conc.',x:margin+80,w:14},{label:'mg/L',x:margin+94,w:20},{label:'Aroma',x:margin+114,w:26},{label:'Limiar',x:margin+140,w:26},{label:'Fonte',x:margin+166,w:14},{label:'Intensidade',x:margin+180,w:12}];
+
+    setColor('#050e05'); doc.rect(margin-2, y-4, contentW+4, 7, 'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(6.5); setColor('#5a9a3a','text');
+    cols.forEach(col => doc.text(col.label.toUpperCase(), col.x, y));
+    y += 4;
+    setColor('#122212'); doc.rect(margin-2, y-1, contentW+4, 0.3, 'F');
+    y += 2;
+
+    // Table rows
+    results.table.forEach((row, i) => {
+      if(y > H - 22) {
+        doc.addPage();
+        setColor('#060c06'); doc.rect(0,0,W,H,'F');
+        y = 16;
+        // Mini header
+        setColor('#050e05'); doc.rect(margin-2,y-4,contentW+4,7,'F');
+        doc.setFont('helvetica','bold'); doc.setFontSize(6.5); setColor('#5a9a3a','text');
+        cols.forEach(col => doc.text(col.label.toUpperCase(), col.x, y));
+        y += 6;
+      }
+
+      const rowBg = i%2===0 ? '#070f07' : '#060c06';
+      setColor(rowBg); doc.rect(margin-2, y-3.5, contentW+4, 6.5, 'F');
+
+      doc.setFont('helvetica','normal'); doc.setFontSize(6.5);
+      const intensity = parseFloat(row.intensity);
+      const [ar, ag, ab] = hex2rgb(AROMA_COLORS[row.aroma]||'#a0da60');
+
+      // Bot name
+      setColor('#5a9838','text');
+      doc.text((allBotanicals[row.bot]?.icon||'')+' '+row.bot, cols[0].x, y, {maxWidth: cols[0].w-1});
+      // Compound
+      setColor('#b0d898','text');
+      doc.text(row.compound, cols[1].x, y, {maxWidth: cols[1].w-1});
+      // Conc
+      setColor('#708860','text');
+      doc.text(row.conc+'%', cols[2].x, y);
+      // mg/L
+      setColor('#a0da60','text'); doc.setFont('helvetica','bold');
+      doc.text(row.mgL, cols[3].x, y, {maxWidth:cols[3].w-1});
+      // Aroma pill
+      doc.setFont('helvetica','normal');
+      doc.setFillColor(ar*0.12,ag*0.12,ab*0.12);
+      doc.setDrawColor(ar*0.5,ag*0.5,ab*0.5);
+      const aromaW = doc.getTextWidth(row.aroma)+3;
+      doc.roundedRect(cols[4].x, y-3, Math.min(aromaW, cols[4].w-1), 4.5, 1, 1, 'FD');
+      doc.setTextColor(ar,ag,ab); doc.setFontSize(6);
+      doc.text(row.aroma, cols[4].x+1.5, y+0.2);
+      // Threshold
+      doc.setFontSize(6); setColor('#305030','text');
+      doc.text(row.threshold, cols[5].x, y, {maxWidth:cols[5].w-1});
+      // Factors (cocktail only)
+      if(isCocktail) {
+        setColor('#5a3090','text'); doc.setFontSize(5.5);
+        doc.text(`×${row.extractFactor}`, cols[6].x, y);
+      }
+      // Source
+      const srcIdx = isCocktail ? 7 : 6;
+      setColor(row.source==='laudo'?'#4a8ac0':'#3a5a3a','text');
+      doc.setFontSize(6);
+      doc.text(row.source==='laudo'?'laudo':'lit.', cols[srcIdx].x, y);
+      // Intensity bar
+      const intIdx = isCocktail ? 8 : 7;
+      const barW = cols[intIdx].w - 4;
+      doc.setFillColor(20,35,20); doc.rect(cols[intIdx].x, y-2, barW, 2.5, 'F');
+      doc.setFillColor(ar,ag,ab); doc.rect(cols[intIdx].x, y-2, barW*intensity, 2.5, 'F');
+      setColor('#305030','text'); doc.setFontSize(5.5);
+      doc.text(row.intensity, cols[intIdx].x, y+2.5);
+
+      y += 7;
+    });
+
+    // ── METHODOLOGY FOOTER ─────────────────────────────────────────────
+    if(y < H - 28) {
+      y = Math.max(y, H - 28);
+      setColor('#050e05'); doc.rect(margin-3, y-2, contentW+6, 0.3, 'F');
+      y += 4;
+      doc.setFont('helvetica','bold'); doc.setFontSize(6.5); setColor('#3a7a3a','text');
+      doc.text('METODOLOGIA', margin, y); y += 4;
+      doc.setFont('helvetica','normal'); doc.setFontSize(6); setColor('#254525','text');
+      const methodText = isCocktail
+        ? 'Coquetel: conc.% × g/L × 10 × fator_extração × fator_Brix × fator_pH = mg/L. Brix modela ancoragem de voláteis (f=1/(1+B/100×0.8)). pH modula aromas ácidos/florais centrado em pH 3.5. Intensidade: log₁₀(1+mgL/limiar)/log₁₀(101).'
+        : 'Gin/Destilado: conc.% × g/L × 10 × fator_extração = mg/L. Compostos não voláteis removidos pela destilação. Intensidade percebida via modelo logarítmico: log₁₀(1+mgL/limiar_médio)/log₁₀(101).';
+      const lines = doc.splitTextToSize(methodText, contentW);
+      doc.text(lines, margin, y);
+    }
+
+    // ── Save PDF ──────────────────────────────────────────────────────────
+    const recipeName = recipe.slice(0,3).map(([n])=>n.split(' ')[0]).join('-') || 'perfil';
+    const filename = `gin-lab-${isCocktail?'cocktail':'gin'}-${recipeName}-${now.toISOString().slice(0,10)}.pdf`;
+    doc.save(filename);
+  }
+
+  // ── Entry point: build radar PNG then PDF ────────────────────────────────
+  const now = new Date();
+  const svgStr = buildRadarSVG(results.aromas, 500);
+  svgToPng(svgStr, 500, (radarPng) => buildPDF(radarPng));
 }
 
 // ─── RADAR ────────────────────────────────────────────────────────────────────
@@ -919,6 +1226,417 @@ function StockModal({stock,onSave,onClose}){
   );
 }
 
+// ─── PDF GENERATOR ───────────────────────────────────────────────────────────
+// Uses jsPDF + SVG-to-canvas conversion (all via CDN loaded in HTML)
+function generatePDFDoc(recipe, allBotanicals, mode, variant="full") {
+  // Validate jsPDF available
+  if(typeof window.jspdf === "undefined") {
+    alert("jsPDF não carregado. Verifique a conexão com a internet.");
+    return;
+  }
+  const { jsPDF } = window.jspdf;
+  const { results, grams, fruitParams, name } = recipe;
+  if(!results) return;
+
+  const DARK    = [6, 12, 6];
+  const GREEN   = [160, 218, 96];
+  const DKGREEN = [48, 80, 48];
+  const WHITE   = [224, 240, 224];
+  const PURPLE  = [196, 160, 232];
+
+  const isCocktail = mode === "cocktail" || results.mode === "cocktail";
+  const ACCENT = isCocktail ? PURPLE : GREEN;
+
+  const doc = new jsPDF({ orientation:"portrait", unit:"mm", format:"a4" });
+  const W = 210, H = 297;
+  const PX = 18, PY = 18; // page padding
+
+  // ── Helper: draw radar chart as vector (no canvas needed) ────────────────
+  function drawRadar(doc, cx, cy, r, aromaData, size) {
+    const active = Object.entries(aromaData)
+      .filter(([,v])=>v>0.02)
+      .sort(([,a],[,b])=>b-a)
+      .slice(0,16); // max 16 axes for readability
+    const n = active.length;
+    if(n < 3) return;
+    const as = (2*Math.PI)/n;
+    const pt = (i,rad) => [
+      cx + rad * Math.sin(i*as - Math.PI/2),
+      cy - rad * Math.cos(i*as - Math.PI/2)
+    ];
+
+    // Grid rings
+    doc.setDrawColor(40,60,40);
+    doc.setLineWidth(0.2);
+    [0.25,0.5,0.75,1.0].forEach(lvl=>{
+      const pts = active.map((_,i)=>pt(i,r*lvl));
+      doc.setDrawColor(lvl===1?60:30, lvl===1?90:50, lvl===1?60:30);
+      doc.lines(pts.slice(1).map((p,i)=>[p[0]-pts[i][0],p[1]-pts[i][1]]),pts[0][0],pts[0][1],[1,1]);
+      // Close the polygon
+      doc.line(pts[n-1][0],pts[n-1][1],pts[0][0],pts[0][1]);
+    });
+
+    // Spoke lines
+    doc.setDrawColor(30,50,30);
+    doc.setLineWidth(0.15);
+    active.forEach((_,i)=>{
+      const o=pt(i,r);
+      doc.line(cx,cy,o[0],o[1]);
+    });
+
+    // Data polygon fill (simulate with lines)
+    const dataPts = active.map(([,v],i)=>pt(i,r*Math.min(v,1)));
+    doc.setDrawColor(...ACCENT);
+    doc.setFillColor(ACCENT[0],ACCENT[1],ACCENT[2]);
+    doc.setLineWidth(0.6);
+    doc.lines(dataPts.slice(1).map((p,i)=>[p[0]-dataPts[i][0],p[1]-dataPts[i][1]]),
+      dataPts[0][0],dataPts[0][1],[1,1]);
+    doc.line(dataPts[n-1][0],dataPts[n-1][1],dataPts[0][0],dataPts[0][1]);
+
+    // Data points
+    active.forEach(([,v],i)=>{
+      const p=pt(i,r*Math.min(v,1));
+      doc.setFillColor(...ACCENT);
+      doc.circle(p[0],p[1],0.8,"F");
+    });
+
+    // Labels
+    doc.setFontSize(6);
+    doc.setTextColor(...WHITE);
+    active.forEach(([aroma],i)=>{
+      const p=pt(i,r*1.28);
+      const align = p[0]<cx-2?"right":p[0]>cx+2?"left":"center";
+      doc.text(aroma,p[0],p[1],{align});
+    });
+  }
+
+  // ── PAGE 1: COVER (both variants) ────────────────────────────────────────
+  // Background
+  doc.setFillColor(...DARK);
+  doc.rect(0,0,W,H,"F");
+
+  // Top accent bar
+  doc.setFillColor(...ACCENT);
+  doc.rect(0,0,W,1.5,"F");
+
+  // App title
+  doc.setFontSize(9);
+  doc.setTextColor(...DKGREEN);
+  doc.text(isCocktail?"COCKTAIL AROMATICS LAB":"GIN AROMATICS LAB", PX, PY+6, {charSpace:2});
+
+  // Recipe name
+  doc.setFontSize(28);
+  doc.setTextColor(...ACCENT);
+  const displayName = name || "Receita sem nome";
+  doc.text(displayName, PX, PY+22, {maxWidth:W-PX*2});
+
+  // Mode pill
+  const modeText = isCocktail ? "Coquetel / Extração Completa" : "Gin / Destilado";
+  doc.setFontSize(8);
+  doc.setTextColor(...DKGREEN);
+  doc.setFillColor(10,25,10);
+  doc.roundedRect(PX,PY+27,60,7,2,2,"FD");
+  doc.setTextColor(...ACCENT);
+  doc.text((isCocktail?"🍹 ":"🌿 ")+modeText, PX+30,PY+31.5,{align:"center"});
+
+  // Date
+  doc.setFontSize(7);
+  doc.setTextColor(...DKGREEN);
+  doc.text("Gerado em "+new Date().toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"}), W-PX, PY+6, {align:"right"});
+
+  // ── Ingredients list ──────────────────────────────────────────────────────
+  const activeIngredients = Object.entries(grams).filter(([,v])=>parseFloat(v)>0).sort(([,a],[,b])=>parseFloat(b)-parseFloat(a));
+  
+  let y = PY+44;
+  doc.setFontSize(7);
+  doc.setTextColor(...DKGREEN);
+  doc.text("COMPOSIÇÃO", PX, y);
+  doc.setDrawColor(...DKGREEN);
+  doc.setLineWidth(0.2);
+  doc.line(PX,y+1.5,W-PX,y+1.5);
+  y += 7;
+
+  const colW = (W - PX*2 - 8) / 3;
+  activeIngredients.forEach(([bot,v],idx)=>{
+    const info = allBotanicals[bot]||{};
+    const col = idx % 3;
+    const row = Math.floor(idx/3);
+    const bx = PX + col*(colW+4);
+    const by = y + row*9;
+    doc.setFillColor(10,20,10);
+    doc.roundedRect(bx,by,colW,7.5,1.5,1.5,"F");
+    doc.setFontSize(14);
+    doc.text(info.icon||"🌿",bx+3.5,by+5.5);
+    doc.setFontSize(7.5);
+    doc.setTextColor(...ACCENT);
+    doc.text(bot.length>18?bot.slice(0,16)+"…":bot,bx+9,by+3.5);
+    doc.setFontSize(6.5);
+    doc.setTextColor(...DKGREEN);
+    doc.text(v+" g/L",bx+9,by+6.2);
+    // Brix/pH if cocktail
+    if(isCocktail&&fruitParams[bot]){
+      const fp=fruitParams[bot];
+      const extra=[(fp.brix?"Brix:"+fp.brix:""),fp.ph?"pH:"+fp.ph:""].filter(Boolean).join(" ");
+      if(extra){doc.setFontSize(5.5);doc.setTextColor(100,80,160);doc.text(extra,bx+colW-1,by+3.5,{align:"right"});}
+    }
+  });
+
+  const ingRows = Math.ceil(activeIngredients.length/3);
+  y += ingRows*9 + 8;
+
+  // ── Radar chart ──────────────────────────────────────────────────────────
+  const radarCX = W/2, radarCY = y+38, radarR = 32;
+  drawRadar(doc, radarCX, radarCY, radarR, results.aromas||{}, 64);
+  y += 82;
+
+  // ── Dominant aromas bar chart ─────────────────────────────────────────────
+  doc.setFontSize(7);
+  doc.setTextColor(...DKGREEN);
+  doc.text("AROMAS DOMINANTES", PX, y);
+  doc.line(PX,y+1.5,W-PX,y+1.5);
+  y+=6;
+
+  const topAromas = Object.entries(results.aromas||{}).sort(([,a],[,b])=>b-a).slice(0,10);
+  const barMaxW = W - PX*2 - 30;
+  topAromas.forEach(([aroma,val])=>{
+    doc.setFontSize(7);
+    doc.setTextColor(...WHITE);
+    doc.text(aroma, PX, y+3.5, {maxWidth:25});
+    doc.setFillColor(20,40,20);
+    doc.roundedRect(PX+28,y+0.5,barMaxW,4,1,1,"F");
+    doc.setFillColor(...ACCENT);
+    doc.roundedRect(PX+28,y+0.5,Math.max(2,barMaxW*val),4,1,1,"F");
+    doc.setFontSize(6);
+    doc.setTextColor(...DKGREEN);
+    doc.text(Math.round(val*100)+"%", PX+28+barMaxW+2, y+3.5);
+    y+=6.5;
+  });
+
+  if(variant==="simple") {
+    // Footer
+    y = H-18;
+    doc.setFontSize(6.5);
+    doc.setTextColor(...DKGREEN);
+    doc.text("Gin Aromatics Lab · modelagem físico-química de perfis aromáticos", W/2, y, {align:"center"});
+    doc.setDrawColor(...DKGREEN);
+    doc.line(PX,y-3,W-PX,y-3);
+    doc.save((displayName||"receita").replace(/\s+/g,"-").toLowerCase()+"-resumido.pdf");
+    return;
+  }
+
+  // ── PAGE 2: TECHNICAL (full variant only) ────────────────────────────────
+  doc.addPage();
+  doc.setFillColor(...DARK);
+  doc.rect(0,0,W,H,"F");
+  doc.setFillColor(...ACCENT);
+  doc.rect(0,0,W,1.5,"F");
+
+  // Header
+  doc.setFontSize(7);
+  doc.setTextColor(...DKGREEN);
+  doc.text("FICHA TÉCNICA — "+displayName.toUpperCase(), PX, PY+4, {charSpace:1.5});
+  doc.setDrawColor(...DKGREEN);
+  doc.line(PX,PY+6,W-PX,PY+6);
+
+  // Compounds table
+  let ty = PY+13;
+  const colDefs = [
+    {label:"Botânico",     w:38},
+    {label:"Composto",     w:36},
+    {label:"Conc.%",       w:14},
+    {label:"mg/L est.",    w:18},
+    {label:"Aroma",        w:22},
+    {label:"Intensidade",  w:22},
+    {label:"Fonte",        w:14},
+  ];
+  const totalW = colDefs.reduce((s,c)=>s+c.w,0);
+  
+  // Table header
+  doc.setFillColor(5,14,5);
+  doc.rect(PX,ty,totalW,5,"F");
+  let tx=PX;
+  colDefs.forEach(col=>{
+    doc.setFontSize(5.5);
+    doc.setTextColor(...DKGREEN);
+    doc.text(col.label,tx+1,ty+3.5);
+    tx+=col.w;
+  });
+  ty+=5;
+
+  // Table rows
+  const tableRows = (results.table||[]).slice(0,40); // max 40 rows
+  tableRows.forEach((row,i)=>{
+    if(ty > H-25) { doc.addPage(); doc.setFillColor(...DARK); doc.rect(0,0,W,H,"F"); ty=PY; }
+    doc.setFillColor(i%2===0?7:9, i%2===0?16:18, i%2===0?7:9);
+    doc.rect(PX,ty,totalW,4.5,"F");
+    const info=allBotanicals[row.bot]||{};
+    const rowData=[
+      (info.icon||"")+row.bot.slice(0,14),
+      row.compound.slice(0,18),
+      row.conc+"%",
+      row.mgL,
+      row.aroma,
+      ("█".repeat(Math.round(parseFloat(row.intensity)*8))+" "+row.intensity).slice(0,14),
+      row.source==="laudo"?"📄 laudo":"📊 lit.",
+    ];
+    tx=PX;
+    rowData.forEach((cell,ci)=>{
+      doc.setFontSize(6);
+      doc.setTextColor(ci===0?160:ci===1?180:120, ci===0?218:ci===1?200:160, ci===0?96:ci===1?140:120);
+      doc.text(String(cell),tx+1,ty+3);
+      tx+=colDefs[ci].w;
+    });
+    ty+=4.5;
+  });
+
+  // Methodology box
+  ty+=8;
+  if(ty<H-40){
+    doc.setFillColor(5,14,5);
+    doc.roundedRect(PX,ty,W-PX*2,30,2,2,"F");
+    doc.setDrawColor(...DKGREEN);
+    doc.roundedRect(PX,ty,W-PX*2,30,2,2,"D");
+    doc.setFontSize(6.5);
+    doc.setTextColor(...DKGREEN);
+    doc.text("METODOLOGIA", PX+4, ty+5);
+    doc.setFontSize(6);
+    doc.setTextColor(100,150,100);
+    const methText = isCocktail
+      ? "Coquetel: conc.% × g/L × 10 × fator_extração × fator_Brix × fator_pH = mg/L estimado.
+Brix: f=1/(1+Brix/100×0.8) — ancoragem de voláteis na matriz de açúcares.
+pH: modula percepção de aromas ácidos (Cítrico, Frutado) e florais, centrado em pH 3.5.
+Fatores de extração: Frutas ×2.2, Flores ×1.4, Ervas ×1.1, demais ×0.85–1.0.
+Intensidade: log₁₀(1 + mgL/limiar_médio) / log₁₀(101) — normalizado 0–1."
+      : "Gin/Destilado: conc.% × g/L × 10 × fator_extração = mg/L no produto.
+Compostos não voláteis removidos pela destilação (ácidos, taninos, alcaloides).
+Fator extração: Base ×1.0, Cítricos ×0.85, Frutas ×0.60, Flores ×0.75.
+Intensidade: log₁₀(1 + mgL/limiar_médio) / log₁₀(101) — normalizado 0–1.
+Limiar: média (min+max)/2 dos valores de percepção olfativa da literatura.";
+    const lines = methText.split("
+");
+    lines.forEach((line,i)=>{ doc.text(line, PX+4, ty+10+i*4.5, {maxWidth:W-PX*2-8}); });
+  }
+
+  // Footer
+  doc.setFontSize(6);
+  doc.setTextColor(...DKGREEN);
+  doc.text("Gin Aromatics Lab · ficha técnica · "+new Date().toLocaleDateString("pt-BR"), W/2, H-8, {align:"center"});
+
+  doc.save((displayName||"receita").replace(/\s+/g,"-").toLowerCase()+"-tecnico.pdf");
+}
+
+// ── PDF Modal ─────────────────────────────────────────────────────────────────
+function PdfModal({recipe,allBotanicals,mode,onClose}){
+  const [variant,setVariant]=useState(null); // null=choosing, "simple"|"full"=generating
+  const generate=(v)=>{
+    setVariant(v);
+    setTimeout(()=>{
+      generatePDFDoc(recipe,allBotanicals,mode,v);
+      setTimeout(()=>setVariant(null),800);
+    },100);
+  };
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}>
+      <div style={{background:"#08120a",border:"1px solid #1e3a1e",borderRadius:18,padding:"32px 36px",maxWidth:420,width:"100%",boxShadow:"0 24px 80px rgba(0,0,0,0.6)"}}>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:20,color:"#a0da60",fontWeight:700,marginBottom:6}}>Exportar PDF</div>
+        <div style={{fontSize:9,color:"#305030",letterSpacing:1.5,textTransform:"uppercase",marginBottom:24}}>{recipe.name||"Receita sem nome"}</div>
+        <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:24}}>
+          <button onClick={()=>generate("simple")}
+            style={{background:"linear-gradient(135deg,#0a2414,#060e0a)",border:"1px solid #2a5a3a",borderRadius:10,padding:"16px 20px",cursor:"pointer",textAlign:"left",transition:"border-color 0.2s"}}
+            onMouseEnter={e=>e.currentTarget.style.borderColor="#4ada80"}
+            onMouseLeave={e=>e.currentTarget.style.borderColor="#2a5a3a"}>
+            <div style={{fontSize:16,marginBottom:6}}>📋</div>
+            <div style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:"#80d060",marginBottom:4}}>Versão Resumida</div>
+            <div style={{fontSize:10,color:"#305030",lineHeight:1.6}}>1 página · Nome, ingredientes, radar aromático e aromas dominantes. Ideal para compartilhar com o time.</div>
+          </button>
+          <button onClick={()=>generate("full")}
+            style={{background:"linear-gradient(135deg,#0e1430,#060810)",border:"1px solid #2a3a6a",borderRadius:10,padding:"16px 20px",cursor:"pointer",textAlign:"left",transition:"border-color 0.2s"}}
+            onMouseEnter={e=>e.currentTarget.style.borderColor="#60a0e0"}
+            onMouseLeave={e=>e.currentTarget.style.borderColor="#2a3a6a"}>
+            <div style={{fontSize:16,marginBottom:6}}>🔬</div>
+            <div style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:"#80b0e0",marginBottom:4}}>Versão Técnica</div>
+            <div style={{fontSize:10,color:"#2a4a7a",lineHeight:1.6}}>2+ páginas · Capa + radar + tabela completa de compostos (mg/L, limiar, intensidade, fonte) + metodologia.</div>
+          </button>
+        </div>
+        {variant&&(
+          <div style={{textAlign:"center",padding:"8px 0",fontSize:11,color:"#6ada80",letterSpacing:1}}>
+            ⏳ Gerando PDF {variant==="simple"?"resumido":"técnico"}...
+          </div>
+        )}
+        <button onClick={onClose} style={{width:"100%",background:"transparent",border:"1px solid #1c381c",color:"#305030",padding:"9px",borderRadius:8,cursor:"pointer",fontFamily:"'DM Mono',monospace",fontSize:11,marginTop:4}}>Cancelar</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Recipe Manager Modal ──────────────────────────────────────────────────────
+function RecipeManager({recipes,onLoad,onDelete,onExport,onImport,onClose}){
+  const [search,setSearch]=useState("");
+  const fileRef=React.useRef();
+  const filtered=recipes.filter(r=>r.name.toLowerCase().includes(search.toLowerCase()));
+  const fmt=(iso)=>new Date(iso).toLocaleDateString("pt-BR",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:20,backdropFilter:"blur(8px)"}}>
+      <div style={{background:"#08120a",border:"1px solid #1e3a1e",borderRadius:18,width:"100%",maxWidth:680,maxHeight:"88vh",display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 24px 80px rgba(0,0,0,0.6)"}}>
+        <div style={{padding:"18px 22px",borderBottom:"1px solid #142214",display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:22}}>📚</span>
+          <div>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:17,color:"#a0da60",fontWeight:700}}>Receitas Salvas</div>
+            <div style={{fontSize:9,color:"#305030",letterSpacing:2,marginTop:1,textTransform:"uppercase"}}>{recipes.length} receita{recipes.length!==1?"s":""}</div>
+          </div>
+          <div style={{marginLeft:"auto",display:"flex",gap:8}}>
+            <button onClick={onExport} style={{background:"#0a1e14",border:"1px solid #2a5a3a",color:"#5ada90",padding:"5px 12px",borderRadius:7,cursor:"pointer",fontFamily:"'DM Mono',monospace",fontSize:10}}>⬇ Exportar</button>
+            <button onClick={()=>fileRef.current.click()} style={{background:"#0a1428",border:"1px solid #2a4a7a",color:"#60a0e0",padding:"5px 12px",borderRadius:7,cursor:"pointer",fontFamily:"'DM Mono',monospace",fontSize:10}}>⬆ Importar</button>
+            <input ref={fileRef} type="file" accept=".json" style={{display:"none"}} onChange={e=>{if(e.target.files[0])onImport(e.target.files[0]);}}/>
+            <button onClick={onClose} style={{background:"transparent",border:"none",color:"#305030",fontSize:20,cursor:"pointer"}}>✕</button>
+          </div>
+        </div>
+        <div style={{padding:"12px 22px",borderBottom:"1px solid #0e1e0e"}}>
+          <input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar receita..."
+            style={{background:"#091409",border:"1px solid #1c381c",color:"#a0da60",padding:"7px 12px",borderRadius:7,fontFamily:"'DM Mono',monospace",fontSize:12,width:"100%",outline:"none"}}/>
+        </div>
+        <div style={{flex:1,overflowY:"auto",padding:"12px 22px"}}>
+          {filtered.length===0?(
+            <div style={{textAlign:"center",padding:"48px 0",color:"#254525",fontSize:12}}>
+              {recipes.length===0?"Nenhuma receita salva ainda.":"Nenhuma receita encontrada."}
+            </div>
+          ):filtered.sort((a,b)=>new Date(b.updatedAt)-new Date(a.updatedAt)).map(r=>{
+            const activeCount=Object.values(r.grams||{}).filter(v=>parseFloat(v)>0).length;
+            const isCocktail=r.mode==="cocktail";
+            return(
+              <div key={r.id} style={{background:"rgba(7,16,7,0.85)",border:"1px solid #162a16",borderRadius:10,padding:"12px 16px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
+                <div style={{fontSize:24}}>{isCocktail?"🍹":"🌿"}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,color:"#90c860",fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.name}</div>
+                  <div style={{fontSize:9,color:"#305030",marginTop:2}}>
+                    {activeCount} ingrediente{activeCount!==1?"s":""} · {isCocktail?"Coquetel":"Gin"} · {fmt(r.updatedAt)}
+                  </div>
+                  <div style={{fontSize:9,color:"#1e3e1e",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                    {Object.entries(r.grams||{}).filter(([,v])=>parseFloat(v)>0).slice(0,5).map(([b,v])=>`${b} ${v}g/L`).join(" · ")}
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:6,flexShrink:0}}>
+                  <button onClick={()=>onLoad(r)}
+                    style={{background:"linear-gradient(135deg,#1c4a0c,#12300a)",border:"1px solid #3a7a1a",color:"#a0da60",padding:"6px 14px",borderRadius:7,cursor:"pointer",fontFamily:"'DM Mono',monospace",fontSize:10}}>
+                    ▶ Abrir
+                  </button>
+                  <button onClick={()=>{if(window.confirm("Remover ""+r.name+""?"))onDelete(r.id);}}
+                    style={{background:"#1a0808",border:"1px solid #4a1818",color:"#c06060",padding:"6px 10px",borderRadius:7,cursor:"pointer",fontFamily:"'DM Mono',monospace",fontSize:10}}>
+                    ✕
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{padding:"12px 22px",borderTop:"1px solid #142214",fontSize:9,color:"#1e3e1e",textAlign:"center"}}>
+          Para sincronizar entre dispositivos: exporte o JSON e commite como recipes.json no seu repositório GitHub
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 function App(){
   const [step,setStep]=useState("input");
@@ -936,6 +1654,10 @@ function App(){
   const [fruitParams,setFruitParams]=useState({}); // { [botName]: { brix: "", ph: "" } }
   const [grams,setGrams]=useState(()=>Object.fromEntries(Object.keys(BOTANICALS_DB).map(k=>[k,""])));
   const [results,setResults]=useState(null);
+  const [recipeName,setRecipeName]=useState("");
+  const [savedRecipes,setSavedRecipes]=useState([]);
+  const [showRecipeManager,setShowRecipeManager]=useState(false);
+  const [showPdfModal,setShowPdfModal]=useState(false);
 
   // ── GitHub auto-update config ────────────────────────────────────────────────────────────
   // Aponte para o arquivo botanicals.json no seu repositório GitHub
@@ -947,6 +1669,7 @@ function App(){
     (async()=>{
       try{const r=await window.storage.get("gin_stock");if(r&&r.value)setStock(JSON.parse(r.value));}catch(e){}
       try{const r=await window.storage.get("gin_custom_db");if(r&&r.value)setCustomDB(JSON.parse(r.value));}catch(e){}
+      try{const r=await window.storage.get("gin_recipes");if(r&&r.value)setSavedRecipes(JSON.parse(r.value));}catch(e){}
       setStockLoaded(true);
     })();
   },[]);
@@ -995,6 +1718,80 @@ function App(){
     try{await window.storage.set("gin_custom_db",JSON.stringify(newCustom));}catch(e){}
     setShowAdminModal(false);
   },[]);
+
+  // ── Recipe CRUD ─────────────────────────────────────────────────────────────
+  const saveRecipe = useCallback(async(name)=>{
+    const recipe = {
+      id: Date.now().toString(),
+      name: name||recipeName||("Receita "+new Date().toLocaleDateString("pt-BR")),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      mode,
+      grams: Object.fromEntries(Object.entries(grams).filter(([,v])=>parseFloat(v)>0)),
+      fruitParams: Object.fromEntries(Object.entries(fruitParams).filter(([k])=>Object.keys(grams).includes(k))),
+      results,
+    };
+    const updated = [...savedRecipes.filter(r=>r.id!==recipe.id), recipe];
+    setSavedRecipes(updated);
+    try{await window.storage.set("gin_recipes", JSON.stringify(updated));}catch(e){}
+    return recipe;
+  },[recipeName,mode,grams,fruitParams,results,savedRecipes]);
+
+  const loadRecipe = useCallback((recipe)=>{
+    setRecipeName(recipe.name);
+    setMode(recipe.mode||"gin");
+    setGrams(p=>({...p,...recipe.grams}));
+    setFruitParams(recipe.fruitParams||{});
+    if(recipe.results) setResults(recipe.results);
+    setStep(recipe.results?"results":"input");
+    setShowRecipeManager(false);
+  },[]);
+
+  const deleteRecipe = useCallback(async(id)=>{
+    const updated = savedRecipes.filter(r=>r.id!==id);
+    setSavedRecipes(updated);
+    try{await window.storage.set("gin_recipes", JSON.stringify(updated));}catch(e){}
+  },[savedRecipes]);
+
+  const exportRecipesJSON = ()=>{
+    const blob=new Blob([JSON.stringify({version:"1.0",recipes:savedRecipes},null,2)],{type:"application/json"});
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download=`gin-lab-receitas-${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+  };
+
+  const importRecipesJSON = async(file)=>{
+    const text=await file.text();
+    try{
+      const parsed=JSON.parse(text);
+      const incoming=parsed.recipes||parsed;
+      if(!Array.isArray(incoming)) return;
+      const merged=[...savedRecipes];
+      incoming.forEach(r=>{ if(!merged.find(x=>x.id===r.id)) merged.push(r); });
+      setSavedRecipes(merged);
+      await window.storage.set("gin_recipes",JSON.stringify(merged));
+    }catch(e){alert("Erro ao importar receitas: "+e.message);}
+  };
+
+  // ── GitHub sync: push recipes.json ─────────────────────────────────────────
+  // Para sincronizar receitas entre dispositivos, exporte o JSON e commite em:
+  // /recipes.json no mesmo repositório do botanicals.json
+  const syncRecipesFromGithub = useCallback(async()=>{
+    if(!GITHUB_RAW_URL) return;
+    const url=GITHUB_RAW_URL.replace("botanicals.json","recipes.json");
+    try{
+      const res=await fetch(url+"?t="+Date.now());
+      if(!res.ok) return;
+      const parsed=await res.json();
+      const incoming=parsed.recipes||[];
+      const merged=[...savedRecipes];
+      incoming.forEach(r=>{ if(!merged.find(x=>x.id===r.id)) merged.push(r); });
+      setSavedRecipes(merged);
+      await window.storage.set("gin_recipes",JSON.stringify(merged));
+    }catch(e){}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[savedRecipes]);
 
   const allBotanicals=useMemo(()=>{
     const all={...BOTANICALS_DB};
@@ -1120,6 +1917,8 @@ function App(){
 
       {showStockModal&&<StockModal stock={stock} onSave={saveStock} onClose={()=>setShowStockModal(false)}/>}
       {showAdminModal&&<AdminPanel customDB={customDB} onUpdateDB={saveCustomDB} onClose={()=>setShowAdminModal(false)}/>}
+      {showRecipeManager&&<RecipeManager recipes={savedRecipes} onLoad={loadRecipe} onDelete={deleteRecipe} onExport={exportRecipesJSON} onImport={importRecipesJSON} onClose={()=>setShowRecipeManager(false)}/>}
+      {showPdfModal&&results&&<PdfModal recipe={{name:recipeName,grams,fruitParams,results}} allBotanicals={allBotanicals} mode={mode} onClose={()=>setShowPdfModal(false)}/>}
 
       {/* GitHub update banner */}
       {updateBanner&&(
@@ -1152,9 +1951,47 @@ function App(){
               {Object.keys(allBotanicals).length} botânicos · compostos voláteis · perfil aromático
             </div>
           </div>
-          <div style={{marginLeft:"auto",display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
-            {activeCount>0&&<span style={{fontSize:10,color:isCocktail?"#9a6ad4":"#6aad3a",background:isCocktail?"#140828":"#091409",border:`1px solid ${isCocktail?"#3a1860":"#254525"}`,padding:"4px 12px",borderRadius:18}}>{activeCount} selecionado{activeCount>1?"s":""}</span>}
-            {step==="results"&&<button className="btn" style={{padding:"7px 15px",fontSize:11,background:isCocktail?"linear-gradient(135deg,#3a1060,#200840)":"",borderColor:isCocktail?"#6a30b0":""}} onClick={()=>setStep("input")}>← Editar</button>}
+          <div style={{marginLeft:"auto",display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+            {/* Recipe name input */}
+            <div style={{position:"relative",display:"flex",alignItems:"center"}}>
+              <span style={{position:"absolute",left:9,fontSize:11,color:isCocktail?"#5a3090":"#305030",pointerEvents:"none"}}>📝</span>
+              <input type="text" value={recipeName} onChange={e=>setRecipeName(e.target.value)}
+                placeholder="Nome da receita..."
+                style={{background:isCocktail?"rgba(20,8,40,0.8)":"rgba(5,14,5,0.8)",border:`1px solid ${isCocktail?"#3a1860":"#1a3a1a"}`,
+                  color:isCocktail?"#c4a0e8":"#a0da60",padding:"6px 10px 6px 28px",borderRadius:8,
+                  fontFamily:"'DM Mono',monospace",fontSize:11,width:180,outline:"none"}}/>
+            </div>
+            {activeCount>0&&<span style={{fontSize:10,color:isCocktail?"#9a6ad4":"#6aad3a",background:isCocktail?"#140828":"#091409",border:`1px solid ${isCocktail?"#3a1860":"#254525"}`,padding:"4px 10px",borderRadius:18}}>{activeCount} bot.</span>}
+            {/* Recipes button */}
+            <button onClick={()=>setShowRecipeManager(true)}
+              style={{background:"transparent",border:`1px solid ${isCocktail?"#3a1860":"#1a3a1a"}`,
+                color:isCocktail?"#7a50a8":"#4a8a3a",padding:"6px 12px",borderRadius:8,cursor:"pointer",
+                fontFamily:"'DM Mono',monospace",fontSize:11,display:"flex",alignItems:"center",gap:5}}>
+              📚 {savedRecipes.length>0?savedRecipes.length:""}
+            </button>
+            {/* Save current recipe */}
+            {activeCount>0&&(
+              <button onClick={async()=>{
+                const nm=recipeName.trim()||("Receita "+new Date().toLocaleDateString("pt-BR"));
+                await saveRecipe(nm);
+                setRecipeName(nm);
+              }}
+                style={{background:isCocktail?"linear-gradient(135deg,#2a0850,#160428)":"linear-gradient(135deg,#0c2a08,#081808)",
+                  border:`1px solid ${isCocktail?"#5a1890":"#2a5a1a"}`,
+                  color:isCocktail?"#b060e8":"#7ada40",padding:"6px 14px",borderRadius:8,cursor:"pointer",
+                  fontFamily:"'DM Mono',monospace",fontSize:11,display:"flex",alignItems:"center",gap:5}}>
+                💾 Salvar
+              </button>
+            )}
+            {step==="results"&&<button className="btn" style={{padding:"6px 14px",fontSize:11,background:isCocktail?"linear-gradient(135deg,#3a1060,#200840)":"",borderColor:isCocktail?"#6a30b0":""}} onClick={()=>setStep("input")}>← Editar</button>}
+            {step==="results"&&results&&(
+              <button onClick={()=>setShowPdfModal(true)}
+                style={{background:"linear-gradient(135deg,#1a0a30,#0e0620)",border:"1px solid #5a2a9a",color:"#c090e8",
+                  padding:"6px 14px",borderRadius:8,cursor:"pointer",fontFamily:"'DM Mono',monospace",
+                  fontSize:11,display:"flex",alignItems:"center",gap:6}}>
+                📄 PDF
+              </button>
+            )}
             {step==="input"&&<button className="btn" disabled={!activeCount} style={{background:isCocktail?"linear-gradient(135deg,#3a1060,#200840)":"",borderColor:isCocktail?"#6a30b0":""}} onClick={compute}>Analisar →</button>}
           </div>
         </div>
@@ -1363,10 +2200,20 @@ function App(){
       {step==="results"&&results&&(
         <div style={{maxWidth:1120,margin:"26px auto",padding:"0 18px 48px"}}>
           {/* Mode badge */}
-          <div style={{marginBottom:16,display:"flex",alignItems:"center",gap:10}}>
+          <div style={{marginBottom:16,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
             <span style={{fontSize:11,color:results.mode==="cocktail"?"#b080e8":"#a0da60",background:results.mode==="cocktail"?"rgba(40,10,70,0.5)":"rgba(10,25,10,0.5)",border:`1px solid ${results.mode==="cocktail"?"#5a28a0":"#2a5a1a"}`,padding:"4px 14px",borderRadius:18,letterSpacing:1}}>
               {results.mode==="cocktail"?"🍹 Coquetel — Extração Completa":"🌿 Gin — Perfil Destilado"}
             </span>
+            <div style={{marginLeft:"auto",display:"flex",gap:8}}>
+              <button onClick={()=>setShowPdfModal(true)}
+                style={{background:"linear-gradient(135deg,#1a0a2e,#0e0620)",border:"1px solid #5a2a9a",color:"#c090e8",padding:"6px 16px",borderRadius:8,cursor:"pointer",fontFamily:"'DM Mono',monospace",fontSize:11,display:"flex",alignItems:"center",gap:6,letterSpacing:0.5}}>
+                📄 PDF
+              </button>
+              <button onClick={async()=>{const nm=recipeName.trim()||("Receita "+new Date().toLocaleDateString("pt-BR"));await saveRecipe(nm);setRecipeName(nm);}}
+                style={{background:"linear-gradient(135deg,#0c2a08,#081808)",border:"1px solid #2a5a1a",color:"#7ada40",padding:"6px 14px",borderRadius:8,cursor:"pointer",fontFamily:"'DM Mono',monospace",fontSize:11,display:"flex",alignItems:"center",gap:5}}>
+                💾 Salvar Receita
+              </button>
+            </div>
           </div>
 
           <div style={{display:"grid",gridTemplateColumns:"420px 1fr",gap:22,alignItems:"start"}}>

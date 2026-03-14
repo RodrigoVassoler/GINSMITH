@@ -1,6 +1,6 @@
 // Gin Aromatics Lab — Service Worker
 // Versão do cache: mude para forçar atualização
-const CACHE_VERSION = 'gin-lab-v1';
+const CACHE_VERSION = 'gin-lab-v2';
 const STATIC_CACHE = CACHE_VERSION + '-static';
 const DYNAMIC_CACHE = CACHE_VERSION + '-dynamic';
 
@@ -18,6 +18,8 @@ const CDN_CACHE_PATTERNS = [
   'unpkg.com/react@18',
   'unpkg.com/react-dom@18',
   'unpkg.com/@babel/standalone',
+  'unpkg.com/jspdf',
+  'unpkg.com/qrcode',
   'fonts.googleapis.com',
   'fonts.gstatic.com',
 ];
