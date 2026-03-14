@@ -6,7 +6,7 @@
 set -e
 
 # ── Configuração ──────────────────────────────────────────────────
-APP_URL="${1:-https://SEU_USUARIO.github.io/gin-lab}"
+APP_URL="${1:-https://github.com/RodrigoVassoler/GINSMITH}"
 PACKAGE_ID="com.ginlab.aromatics"
 APP_NAME="Gin Aromatics Lab"
 APP_VERSION="1.0.0"
