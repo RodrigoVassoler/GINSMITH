@@ -906,7 +906,7 @@ function AdminPanel({customDB, onUpdateDB, onClose}){
 
             <div style={{display:"flex",gap:8,marginBottom:12}}>
               <input type="url" value={updateUrl} onChange={e=>setUpdateUrl(e.target.value)}
-                placeholder="https://www.github.com/RodrigoVassoler/GINSMITH/edit/main/botanicals.json"
+                placeholder="https://github.com/RodrigoVassoler/GINSMITH/blob/main/botanicals.json"
                 style={{flex:1,background:"#091409",border:"1px solid #1c381c",color:"#a0da60",padding:"8px 12px",borderRadius:7,fontFamily:"'DM Mono',monospace",fontSize:11,outline:"none"}}/>
               <button onClick={fetchUpdate} disabled={!updateUrl.trim()||updateStatus==="loading"}
                 style={{background:"linear-gradient(135deg,#1c4a0c,#12300a)",border:"1px solid #3a7a1a",color:"#a0da60",padding:"8px 18px",borderRadius:7,cursor:updateUrl.trim()?"pointer":"not-allowed",fontFamily:"'DM Mono',monospace",fontSize:11}}>
