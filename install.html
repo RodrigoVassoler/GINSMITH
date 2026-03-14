@@ -9,209 +9,199 @@
     *{margin:0;padding:0;box-sizing:border-box;}
     body{background:linear-gradient(135deg,#060c06 0%,#0c180c 60%,#060c09 100%);
       color:#e0f0e0;font-family:'DM Mono','Courier New',monospace;min-height:100vh;
-      display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;}
-    .card{background:rgba(8,18,8,0.95);border:1px solid #1e3a1e;border-radius:20px;
-      padding:36px 40px;max-width:680px;width:100%;box-shadow:0 24px 80px rgba(0,0,0,0.5);}
-    h1{font-family:'Playfair Display',serif;font-size:28px;color:#a0da60;font-weight:700;margin-bottom:6px;}
-    .subtitle{font-size:9px;color:#305030;letter-spacing:3px;text-transform:uppercase;margin-bottom:32px;}
-    .section{margin-bottom:28px;}
-    .section-title{font-size:8px;color:#3a7a3a;letter-spacing:2px;text-transform:uppercase;
-      margin-bottom:14px;padding-bottom:6px;border-bottom:1px solid #0e220e;}
-    .platforms{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
-    .platform{background:rgba(5,14,5,0.8);border:1px solid #162a16;border-radius:12px;
-      padding:18px;text-align:center;cursor:pointer;transition:all 0.2s;text-decoration:none;color:inherit;}
-    .platform:hover{border-color:#3a7a1a;background:rgba(10,24,10,0.95);}
-    .platform .icon{font-size:28px;margin-bottom:8px;}
-    .platform .name{font-size:11px;color:#a0da60;margin-bottom:4px;}
-    .platform .desc{font-size:9px;color:#305030;line-height:1.6;}
-    .platform.primary{border-color:#2a5a1a;}
-    .qr-section{display:flex;gap:24px;align-items:center;}
-    .qr-container{background:#060c06;border:2px solid #2a5a1a;border-radius:12px;
-      padding:12px;flex-shrink:0;}
-    .qr-info{flex:1;}
-    .qr-info h3{font-size:13px;color:#a0da60;margin-bottom:8px;}
-    .qr-info p{font-size:10px;color:#4a8a4a;line-height:1.8;}
-    .url-box{background:#091409;border:1px solid #1c381c;border-radius:8px;
-      padding:10px 14px;font-size:11px;color:#a0da60;word-break:break-all;
-      margin-top:12px;cursor:pointer;transition:border-color 0.2s;}
+      display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;}
+    .card{background:rgba(8,18,8,0.96);border:1px solid #1e3a1e;border-radius:20px;
+      padding:32px 36px;max-width:700px;width:100%;box-shadow:0 24px 80px rgba(0,0,0,0.6);}
+    h1{font-family:'Playfair Display',serif;font-size:26px;color:#a0da60;font-weight:700;margin-bottom:4px;}
+    .sub{font-size:8px;color:#305030;letter-spacing:3px;text-transform:uppercase;margin-bottom:28px;}
+    .tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:28px;}
+    .tag{padding:3px 10px;border-radius:20px;font-size:9px;border:1px solid;}
+    .tag.g{color:#6ada80;border-color:#2a5a3a;background:rgba(20,80,30,0.2);}
+    .tag.b{color:#60a0e0;border-color:#2a4a7a;background:rgba(20,50,100,0.2);}
+    .section{margin-bottom:24px;}
+    .sec-title{font-size:8px;color:#3a7a3a;letter-spacing:2px;text-transform:uppercase;
+      margin-bottom:12px;padding-bottom:5px;border-bottom:1px solid #0e220e;}
+    .qr-row{display:flex;gap:20px;align-items:center;}
+    .qr-box{background:#060c06;border:2px solid #2a5a1a;border-radius:10px;padding:10px;flex-shrink:0;}
+    .qr-info h3{font-size:12px;color:#a0da60;margin-bottom:6px;}
+    .qr-info p{font-size:10px;color:#4a8a4a;line-height:1.7;}
+    .url-box{background:#091409;border:1px solid #1c381c;border-radius:7px;padding:9px 13px;
+      font-size:11px;color:#a0da60;word-break:break-all;margin-top:10px;cursor:pointer;}
     .url-box:hover{border-color:#3a7a1a;}
-    .url-box .label{font-size:8px;color:#305030;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;}
-    .steps{counter-reset:step;}
-    .step{display:flex;gap:12px;margin-bottom:12px;align-items:flex-start;}
-    .step-num{background:#1a4a0c;border:1px solid #3a7a1a;color:#a0da60;border-radius:50%;
-      width:22px;height:22px;display:flex;align-items:center;justify-content:center;
-      font-size:10px;flex-shrink:0;margin-top:1px;}
-    .step-text{font-size:10px;color:#4a8a4a;line-height:1.7;}
-    .step-text strong{color:#80c060;}
-    .apk-btn{display:flex;align-items:center;gap:10px;background:linear-gradient(135deg,#1c4a0c,#12300a);
-      border:1px solid #3a7a1a;color:#a0da60;padding:14px 22px;border-radius:10px;
-      cursor:pointer;font-family:'DM Mono',monospace;font-size:12px;letter-spacing:0.5px;
-      text-decoration:none;transition:all 0.2s;margin-top:12px;width:100%;justify-content:center;}
+    .url-lbl{font-size:8px;color:#305030;letter-spacing:1px;text-transform:uppercase;margin-bottom:2px;}
+    .platforms{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+    .plat{background:rgba(5,14,5,0.8);border:1px solid #162a16;border-radius:10px;
+      padding:14px;text-align:center;cursor:pointer;transition:border-color 0.2s;}
+    .plat:hover,.plat.active{border-color:#3a7a1a;background:rgba(10,24,10,0.95);}
+    .plat .ico{font-size:24px;margin-bottom:6px;}
+    .plat .nm{font-size:11px;color:#a0da60;margin-bottom:3px;}
+    .plat .ds{font-size:9px;color:#305030;line-height:1.5;}
+    .steps{margin-top:12px;}
+    .step{display:flex;gap:10px;margin-bottom:10px;align-items:flex-start;}
+    .sn{background:#1a4a0c;border:1px solid #3a7a1a;color:#a0da60;border-radius:50%;
+      width:20px;height:20px;display:flex;align-items:center;justify-content:center;
+      font-size:9px;flex-shrink:0;margin-top:1px;}
+    .st{font-size:10px;color:#4a8a4a;line-height:1.6;}
+    .st strong{color:#80c060;}
+    .apk-btn{display:flex;align-items:center;justify-content:center;gap:10px;
+      background:linear-gradient(135deg,#1c4a0c,#12300a);border:1px solid #3a7a1a;
+      color:#a0da60;padding:12px 22px;border-radius:10px;cursor:pointer;
+      font-family:'DM Mono',monospace;font-size:12px;text-decoration:none;
+      transition:all 0.2s;margin-top:12px;width:100%;}
     .apk-btn:hover{background:linear-gradient(135deg,#2a5a18,#1c4a0c);transform:translateY(-1px);}
-    .tag{display:inline-block;padding:2px 8px;border-radius:20px;font-size:9px;
-      border:1px solid;margin-right:4px;margin-top:4px;}
-    .tag.green{color:#6ada80;border-color:#2a5a3a;background:rgba(20,80,30,0.2);}
-    .tag.blue{color:#60a0e0;border-color:#2a4a7a;background:rgba(20,50,100,0.2);}
-    .footer{margin-top:24px;font-size:8px;color:#1e3e1e;text-align:center;letter-spacing:1px;}
+    .warn{font-size:9px;color:#7a4040;padding:8px 10px;background:rgba(60,10,10,0.3);
+      border:1px solid #3a1a1a;border-radius:6px;margin-top:8px;line-height:1.6;}
+    .note{font-size:9px;color:#2a4a2a;margin-top:6px;text-align:center;}
+    .hidden{display:none;}
     #copied{display:none;font-size:9px;color:#6ada80;margin-top:4px;}
-    canvas{border-radius:4px;}
-    @media(max-width:580px){
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+    .col-title{font-size:10px;color:#6ada80;margin-bottom:8px;font-weight:500;}
+    footer{margin-top:20px;font-size:8px;color:#1e3e1e;text-align:center;letter-spacing:1px;}
+    @media(max-width:560px){
       .platforms{grid-template-columns:1fr;}
-      .qr-section{flex-direction:column;}
-      .card{padding:24px 20px;}
-      h1{font-size:22px;}
+      .qr-row{flex-direction:column;}
+      .grid2{grid-template-columns:1fr;}
+      .card{padding:22px 18px;}
     }
   </style>
 </head>
 <body>
-  <div class="card">
-    <!-- Header -->
-    <div style="display:flex;align-items:center;gap:14px;margin-bottom:6px;">
-      <span style="font-size:32px">🌿</span>
-      <div>
-        <h1>Gin Aromatics Lab</h1>
-        <div class="subtitle">modelagem físico-química de perfis aromáticos</div>
-      </div>
-    </div>
+<div class="card">
 
-    <div style="display:flex;gap:6px;margin-bottom:28px;flex-wrap:wrap;">
-      <span class="tag green">✓ Funciona offline</span>
-      <span class="tag green">✓ 70+ botânicos</span>
-      <span class="tag green">✓ PDF técnico</span>
-      <span class="tag blue">🔄 Updates automáticos</span>
-    </div>
-
-    <!-- QR Code + URL -->
-    <div class="section">
-      <div class="section-title">🔗 Acesso rápido</div>
-      <div class="qr-section">
-        <div class="qr-container">
-          <canvas id="qrCanvas" width="140" height="140"></canvas>
-        </div>
-        <div class="qr-info">
-          <h3>Aponte a câmera para instalar</h3>
-          <p>Funciona no Android, iPhone, Windows e Linux.<br>
-          Sem App Store. Sem Play Store.<br>
-          Instala direto do navegador como app nativo.</p>
-          <div class="url-box" onclick="copyURL()" title="Clique para copiar">
-            <div class="label">URL do app</div>
-            <div id="app-url">https://github.com/RodrigoVassoler/GINSMITH</div>
-          </div>
-          <div id="copied">✓ URL copiada!</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Install by platform -->
-    <div class="section">
-      <div class="section-title">📱 Instalar por plataforma</div>
-      <div class="platforms">
-        <div class="platform primary" onclick="showAndroid()">
-          <div class="icon">🤖</div>
-          <div class="name">Android</div>
-          <div class="desc">APK direto ou Chrome → instalar</div>
-        </div>
-        <div class="platform" onclick="showWindows()">
-          <div class="icon">🪟</div>
-          <div class="name">Windows</div>
-          <div class="desc">Chrome/Edge → ícone na barra</div>
-        </div>
-        <div class="platform" onclick="showIOS()">
-          <div class="icon">🍎</div>
-          <div class="name">iPhone / iPad</div>
-          <div class="desc">Safari → Compartilhar → Tela Inicial</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Android detail (default visible) -->
-    <div id="android-steps" class="section">
-      <div class="section-title">🤖 Instalação Android</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-        <div>
-          <div style="font-size:10px;color:#6ada80;margin-bottom:10px;font-weight:500;">Opção A — APK (mais fácil)</div>
-          <div class="steps">
-            <div class="step"><div class="step-num">1</div><div class="step-text">Baixe o arquivo <strong>gin-aromatics-lab.apk</strong> abaixo</div></div>
-            <div class="step"><div class="step-num">2</div><div class="step-text">Abra o arquivo no celular</div></div>
-            <div class="step"><div class="step-num">3</div><div class="step-text">Se pedido: Configurações → <strong>Instalar apps desconhecidos</strong> → Permitir</div></div>
-            <div class="step"><div class="step-num">4</div><div class="step-text">Toque em <strong>Instalar</strong> → pronto!</div></div>
-          </div>
-          <a href="gin-aromatics-lab.apk" class="apk-btn" download>
-            ⬇ Baixar APK Android
-          </a>
-          <div style="font-size:8px;color:#254525;margin-top:8px;text-align:center;">
-            Compatível com Android 5.0+ · ~5MB
-          </div>
-        </div>
-        <div>
-          <div style="font-size:10px;color:#6ada80;margin-bottom:10px;font-weight:500;">Opção B — Via navegador</div>
-          <div class="steps">
-            <div class="step"><div class="step-num">1</div><div class="step-text">Abra o Chrome e acesse a URL do app</div></div>
-            <div class="step"><div class="step-num">2</div><div class="step-text">Aguarde ~5 segundos — aparece banner <strong>"Instalar Gin Lab"</strong></div></div>
-            <div class="step"><div class="step-num">3</div><div class="step-text">Toque em <strong>⬇ Instalar</strong></div></div>
-            <div class="step"><div class="step-num">4</div><div class="step-text">Ícone aparece na tela inicial</div></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div id="windows-steps" class="section" style="display:none;">
-      <div class="section-title">🪟 Instalação Windows</div>
-      <div class="steps">
-        <div class="step"><div class="step-num">1</div><div class="step-text">Abra a URL no <strong>Chrome ou Edge</strong></div></div>
-        <div class="step"><div class="step-num">2</div><div class="step-text">Chrome: clique no ícone <strong>⊕</strong> no canto direito da barra de endereços</div></div>
-        <div class="step"><div class="step-num">3</div><div class="step-text">Edge: Menu (<strong>⋯</strong>) → <strong>Aplicativos</strong> → <strong>Instalar este site como aplicativo</strong></div></div>
-        <div class="step"><div class="step-num">4</div><div class="step-text">Confirme → o app abre em janela própria, sem barra do navegador</div></div>
-      </div>
-    </div>
-
-    <div id="ios-steps" class="section" style="display:none;">
-      <div class="section-title">🍎 Instalação iPhone / iPad</div>
-      <div class="steps">
-        <div class="step"><div class="step-num">1</div><div class="step-text">Abra a URL no <strong>Safari</strong> (não funciona no Chrome do iOS)</div></div>
-        <div class="step"><div class="step-num">2</div><div class="step-text">Toque no botão <strong>Compartilhar</strong> (□↑) na barra inferior</div></div>
-        <div class="step"><div class="step-num">3</div><div class="step-text">Role para baixo e toque em <strong>"Adicionar à Tela de Início"</strong></div></div>
-        <div class="step"><div class="step-num">4</div><div class="step-text">Confirme o nome e toque em <strong>Adicionar</strong></div></div>
-      </div>
-      <div style="font-size:9px;color:#4a2020;margin-top:8px;padding:8px;background:rgba(60,10,10,0.3);border-radius:6px;border:1px solid #3a1a1a;">
-        ⚠️ No iOS o modo offline é limitado pelo Safari — use o Android ou desktop para melhor experiência.
-      </div>
-    </div>
-
-    <div class="footer">
-      Gin Aromatics Lab · Compartilhe com responsabilidade · Para validação e testes
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
+    <span style="font-size:30px">🌿</span>
+    <div>
+      <h1>Gin Aromatics Lab</h1>
+      <div class="sub">modelagem físico-química de perfis aromáticos</div>
     </div>
   </div>
 
-  <!-- QR Code generator (pure JS, no library) -->
-  <script src="https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js"></script>
-  <script>
-    // Detect current URL or use placeholder
-    const APP_URL = window.location.origin + window.location.pathname.replace('install.html','');
-    document.getElementById('app-url').textContent = APP_URL + 'index.html';
+  <div class="tags">
+    <span class="tag g">✓ Funciona offline</span>
+    <span class="tag g">✓ 70+ botânicos</span>
+    <span class="tag g">✓ PDF técnico</span>
+    <span class="tag g">✓ Receitas salvas</span>
+    <span class="tag b">🔄 Updates automáticos via GitHub</span>
+  </div>
 
-    // Generate QR
-    QRCode.toCanvas(document.getElementById('qrCanvas'), APP_URL + 'index.html', {
-      width: 140, margin: 1,
-      color: { dark: '#a0da60', light: '#060c06' }
-    }, err => { if(err) console.warn('QR error:', err); });
+  <!-- QR + URL -->
+  <div class="section">
+    <div class="sec-title">🔗 Acesso rápido</div>
+    <div class="qr-row">
+      <div class="qr-box">
+        <canvas id="qrCanvas" width="130" height="130"></canvas>
+      </div>
+      <div class="qr-info" style="flex:1">
+        <h3>Aponte a câmera para acessar</h3>
+        <p>Instala como app nativo no Android,<br>Windows e Linux — sem loja, sem cadastro.</p>
+        <div class="url-box" onclick="copyURL()">
+          <div class="url-lbl">URL do app</div>
+          <div id="app-url">https://RodrigoVassoler.github.io/GINSMITH</div>
+        </div>
+        <div id="copied">✓ URL copiada!</div>
+      </div>
+    </div>
+  </div>
 
-    function copyURL(){
-      const url = document.getElementById('app-url').textContent;
-      navigator.clipboard.writeText(url).then(()=>{
-        document.getElementById('copied').style.display='block';
-        setTimeout(()=>document.getElementById('copied').style.display='none', 2000);
-      });
-    }
+  <!-- Platform selector -->
+  <div class="section">
+    <div class="sec-title">📱 Escolha sua plataforma</div>
+    <div class="platforms">
+      <div class="plat active" id="btn-android" onclick="show('android')">
+        <div class="ico">🤖</div>
+        <div class="nm">Android</div>
+        <div class="ds">APK ou Chrome</div>
+      </div>
+      <div class="plat" id="btn-windows" onclick="show('windows')">
+        <div class="ico">🪟</div>
+        <div class="nm">Windows</div>
+        <div class="ds">Chrome ou Edge</div>
+      </div>
+      <div class="plat" id="btn-ios" onclick="show('ios')">
+        <div class="ico">🍎</div>
+        <div class="nm">iPhone / iPad</div>
+        <div class="ds">Safari</div>
+      </div>
+    </div>
+  </div>
 
-    function showAndroid(){ showSection('android'); }
-    function showWindows(){ showSection('windows'); }
-    function showIOS(){ showSection('ios'); }
-    function showSection(name){
-      ['android','windows','ios'].forEach(s=>{
-        document.getElementById(s+'-steps').style.display = s===name?'block':'none';
-      });
-    }
-  </script>
+  <!-- Android -->
+  <div class="section" id="sec-android">
+    <div class="sec-title">🤖 Instalação Android</div>
+    <div class="grid2">
+      <div>
+        <div class="col-title">Opção A — APK direto (recomendado)</div>
+        <div class="steps">
+          <div class="step"><div class="sn">1</div><div class="st">Baixe o <strong>gin-aromatics-lab.apk</strong> abaixo</div></div>
+          <div class="step"><div class="sn">2</div><div class="st">Abra o arquivo no celular</div></div>
+          <div class="step"><div class="sn">3</div><div class="st">Se bloqueado: <strong>Configurações → Segurança → Instalar apps desconhecidos → Permitir</strong></div></div>
+          <div class="step"><div class="sn">4</div><div class="st">Toque <strong>Instalar</strong> → ícone aparece na tela inicial</div></div>
+        </div>
+        <a href="gin-aromatics-lab.apk" class="apk-btn" download>⬇ Baixar APK Android</a>
+        <div class="note">Android 5.0+ · ~5MB</div>
+      </div>
+      <div>
+        <div class="col-title">Opção B — Via Chrome (sem APK)</div>
+        <div class="steps">
+          <div class="step"><div class="sn">1</div><div class="st">Abra o Chrome e acesse a URL acima</div></div>
+          <div class="step"><div class="sn">2</div><div class="st">Aguarde ~5s — aparece banner <strong>"Instalar Gin Lab"</strong> na base da tela</div></div>
+          <div class="step"><div class="sn">3</div><div class="st">Toque <strong>⬇ Instalar</strong></div></div>
+          <div class="step"><div class="sn">4</div><div class="st">Ícone aparece na tela inicial — app abre sem barra do Chrome</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Windows -->
+  <div class="section hidden" id="sec-windows">
+    <div class="sec-title">🪟 Instalação Windows</div>
+    <div class="steps">
+      <div class="step"><div class="sn">1</div><div class="st">Abra a URL no <strong>Chrome ou Edge</strong></div></div>
+      <div class="step"><div class="sn">2</div><div class="st"><strong>Chrome:</strong> clique no ícone <strong>⊕</strong> no canto direito da barra de endereços → Instalar</div></div>
+      <div class="step"><div class="sn">3</div><div class="st"><strong>Edge:</strong> Menu <strong>⋯</strong> → Aplicativos → Instalar este site como aplicativo</div></div>
+      <div class="step"><div class="sn">4</div><div class="st">O app abre em janela própria, aparece no menu Iniciar</div></div>
+    </div>
+  </div>
+
+  <!-- iOS -->
+  <div class="section hidden" id="sec-ios">
+    <div class="sec-title">🍎 Instalação iPhone / iPad</div>
+    <div class="steps">
+      <div class="step"><div class="sn">1</div><div class="st">Abra a URL no <strong>Safari</strong> (não funciona no Chrome do iOS)</div></div>
+      <div class="step"><div class="sn">2</div><div class="st">Toque no botão <strong>Compartilhar</strong> (□↑) na barra inferior</div></div>
+      <div class="step"><div class="sn">3</div><div class="st">Role e toque em <strong>"Adicionar à Tela de Início"</strong></div></div>
+      <div class="step"><div class="sn">4</div><div class="st">Confirme o nome → toque <strong>Adicionar</strong></div></div>
+    </div>
+    <div class="warn">⚠️ No iOS o modo offline é limitado pelo Safari. Para melhor experiência use Android ou desktop.</div>
+  </div>
+
+  <footer>Gin Aromatics Lab · github.com/RodrigoVassoler/GINSMITH · Para validação e testes</footer>
+</div>
+
+<script src="https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script>
+  const APP_URL = 'https://RodrigoVassoler.github.io/GINSMITH';
+  document.getElementById('app-url').textContent = APP_URL;
+
+  QRCode.toCanvas(document.getElementById('qrCanvas'), APP_URL, {
+    width: 130, margin: 1,
+    color: { dark: '#a0da60', light: '#060c06' }
+  });
+
+  function copyURL(){
+    navigator.clipboard.writeText(APP_URL).then(()=>{
+      const el = document.getElementById('copied');
+      el.style.display = 'block';
+      setTimeout(()=> el.style.display='none', 2000);
+    });
+  }
+
+  function show(name){
+    ['android','windows','ios'].forEach(n=>{
+      document.getElementById('sec-'+n).classList.toggle('hidden', n!==name);
+      document.getElementById('btn-'+n).classList.toggle('active', n===name);
+    });
+  }
+</script>
 </body>
 </html>

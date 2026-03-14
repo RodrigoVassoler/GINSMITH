@@ -12,26 +12,36 @@
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body, #root { height: 100%; }
-    body { background: #060c06; color: #e0f0e0; overflow-x: hidden; }
-    #install-banner { display:none; position:fixed; bottom:0; left:0; right:0; z-index:9999;
-      background:linear-gradient(135deg,#0d2208,#091609); border-top:1px solid #2a5a1a;
-      padding:12px 20px; align-items:center; gap:12px;
-      font-family:'DM Mono',monospace; font-size:12px; color:#a0da60; }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    html, body, #root { height:100%; }
+    body { background:#060c06; color:#e0f0e0; overflow-x:hidden; }
+    #install-banner {
+      display:none; position:fixed; bottom:0; left:0; right:0; z-index:9999;
+      background:linear-gradient(135deg,#0d2208,#091609);
+      border-top:1px solid #2a5a1a; padding:12px 20px;
+      align-items:center; gap:12px;
+      font-family:'DM Mono',monospace; font-size:12px; color:#a0da60;
+    }
     #install-banner.visible { display:flex; }
-    #install-banner button { background:linear-gradient(135deg,#1c4a0c,#12300a); border:1px solid #3a7a1a;
-      color:#a0da60; padding:7px 18px; border-radius:7px; cursor:pointer;
-      font-family:'DM Mono',monospace; font-size:11px; letter-spacing:0.5px; }
+    #install-banner button {
+      background:linear-gradient(135deg,#1c4a0c,#12300a);
+      border:1px solid #3a7a1a; color:#a0da60; padding:7px 18px;
+      border-radius:7px; cursor:pointer;
+      font-family:'DM Mono',monospace; font-size:11px; letter-spacing:0.5px;
+    }
     #install-close { margin-left:auto; background:transparent; border:none; color:#305030; font-size:18px; cursor:pointer; }
-    #offline-bar { display:none; position:fixed; top:0; left:0; right:0; z-index:9998;
-      background:#3a1a0a; border-bottom:1px solid #7a3a1a; padding:6px; text-align:center;
-      font-family:'DM Mono',monospace; font-size:10px; color:#d07040; letter-spacing:1px; }
+    #offline-bar {
+      display:none; position:fixed; top:0; left:0; right:0; z-index:9998;
+      background:#3a1a0a; border-bottom:1px solid #7a3a1a;
+      padding:6px; text-align:center;
+      font-family:'DM Mono',monospace; font-size:10px; color:#d07040; letter-spacing:1px;
+    }
   </style>
 </head>
 <body>
   <div id="offline-bar">⚡ MODO OFFLINE — dados locais</div>
   <div id="root"></div>
+
   <div id="install-banner">
     <span>🌿</span>
     <div>
@@ -42,47 +52,82 @@
     <button id="install-close">✕</button>
   </div>
 
-  <!-- Core deps -->
+  <!-- Core deps via CDN -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <!-- jsPDF for PDF export -->
+  <!-- PDF export -->
   <script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 
   <script>
-    // Service Worker
-    if('serviceWorker' in navigator){
-      window.addEventListener('load',()=>{
+    // ── Service Worker ──────────────────────────────────────────────────────
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
         navigator.serviceWorker.register('sw.js')
-          .then(r=>console.log('[SW]',r.scope))
-          .catch(e=>console.warn('[SW]',e));
+          .then(r => console.log('[SW] registered:', r.scope))
+          .catch(e => console.warn('[SW] error:', e));
       });
     }
-    // Offline
-    function updateOnlineStatus(){ document.getElementById('offline-bar').style.display=navigator.onLine?'none':'block'; }
-    window.addEventListener('online',updateOnlineStatus);
-    window.addEventListener('offline',updateOnlineStatus);
+
+    // ── Offline indicator ───────────────────────────────────────────────────
+    function updateOnlineStatus() {
+      document.getElementById('offline-bar').style.display = navigator.onLine ? 'none' : 'block';
+    }
+    window.addEventListener('online',  updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
     updateOnlineStatus();
-    // PWA install
+
+    // ── PWA Install prompt ──────────────────────────────────────────────────
     let deferredPrompt;
-    const banner=document.getElementById('install-banner');
-    window.addEventListener('beforeinstallprompt',(e)=>{ e.preventDefault(); deferredPrompt=e; banner.classList.add('visible'); });
-    document.getElementById('install-btn').addEventListener('click',async()=>{
-      if(!deferredPrompt)return; deferredPrompt.prompt(); await deferredPrompt.userChoice;
-      deferredPrompt=null; banner.classList.remove('visible');
+    const banner = document.getElementById('install-banner');
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      banner.classList.add('visible');
     });
-    document.getElementById('install-close').addEventListener('click',()=>banner.classList.remove('visible'));
-    window.addEventListener('appinstalled',()=>{ banner.classList.remove('visible'); deferredPrompt=null; });
-    // Storage
-    window.storage={
-      _store:{},
-      async get(key){ try{ const raw=localStorage.getItem('ginlab_'+key); if(raw===null)throw new Error('not found'); return{key,value:raw}; }catch(e){ if(this._store[key]!==undefined)return{key,value:this._store[key]}; throw e; } },
-      async set(key,value){ this._store[key]=value; try{localStorage.setItem('ginlab_'+key,value);}catch(e){} return{key,value}; },
-      async delete(key){ delete this._store[key]; try{localStorage.removeItem('ginlab_'+key);}catch(e){} return{key,deleted:true}; },
-      async list(prefix){ const keys=Object.keys(localStorage).filter(k=>k.startsWith('ginlab_'+(prefix||''))).map(k=>k.replace('ginlab_','')); return{keys}; }
+    document.getElementById('install-btn').addEventListener('click', async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      await deferredPrompt.userChoice;
+      deferredPrompt = null;
+      banner.classList.remove('visible');
+    });
+    document.getElementById('install-close').addEventListener('click', () => banner.classList.remove('visible'));
+    window.addEventListener('appinstalled', () => { banner.classList.remove('visible'); deferredPrompt = null; });
+
+    // ── Storage API (localStorage + in-memory fallback) ─────────────────────
+    window.storage = {
+      _store: {},
+      async get(key) {
+        try {
+          const raw = localStorage.getItem('ginlab_' + key);
+          if (raw === null) throw new Error('not found');
+          return { key, value: raw };
+        } catch(e) {
+          if (this._store[key] !== undefined) return { key, value: this._store[key] };
+          throw e;
+        }
+      },
+      async set(key, value) {
+        this._store[key] = value;
+        try { localStorage.setItem('ginlab_' + key, value); } catch(e) {}
+        return { key, value };
+      },
+      async delete(key) {
+        delete this._store[key];
+        try { localStorage.removeItem('ginlab_' + key); } catch(e) {}
+        return { key, deleted: true };
+      },
+      async list(prefix) {
+        const keys = Object.keys(localStorage)
+          .filter(k => k.startsWith('ginlab_' + (prefix || '')))
+          .map(k => k.replace('ginlab_', ''));
+        return { keys };
+      }
     };
   </script>
 
+  <!-- App (JSX transpiled by Babel in browser — no build step needed) -->
   <script type="text/babel" data-presets="react">
 const { useState, useMemo, useEffect, useCallback } = React;
 
@@ -992,7 +1037,7 @@ function AdminPanel({customDB, onUpdateDB, onClose}){
 
             <div style={{display:"flex",gap:8,marginBottom:12}}>
               <input type="url" value={updateUrl} onChange={e=>setUpdateUrl(e.target.value)}
-                placeholder="https://github.com/RodrigoVassoler/GINSMITH/blob/main/botanicals.json"
+                placeholder="https://raw.githubusercontent.com/voce/gin-lab/main/botanicals.json"
                 style={{flex:1,background:"#091409",border:"1px solid #1c381c",color:"#a0da60",padding:"8px 12px",borderRadius:7,fontFamily:"'DM Mono',monospace",fontSize:11,outline:"none"}}/>
               <button onClick={fetchUpdate} disabled={!updateUrl.trim()||updateStatus==="loading"}
                 style={{background:"linear-gradient(135deg,#1c4a0c,#12300a)",border:"1px solid #3a7a1a",color:"#a0da60",padding:"8px 18px",borderRadius:7,cursor:updateUrl.trim()?"pointer":"not-allowed",fontFamily:"'DM Mono',monospace",fontSize:11}}>
@@ -1663,7 +1708,7 @@ function App(){
   // Aponte para o arquivo botanicals.json no seu repositório GitHub
   // Exemplo: "https://raw.githubusercontent.com/SEU_USER/gin-lab/main/botanicals.json"
   // Deixe "" para desabilitar
-  const GITHUB_RAW_URL = "";
+  const GITHUB_RAW_URL = "https://raw.githubusercontent.com/RodrigoVassoler/GINSMITH/main/botanicals.json";
 
   useEffect(()=>{
     (async()=>{

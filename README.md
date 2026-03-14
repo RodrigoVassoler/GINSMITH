@@ -1,77 +1,60 @@
-# 🌿 Gin Aromatics Lab
+# 🌿 Gin Aromatics Lab — GINSMITH
 
-App PWA para modelagem físico-química de perfis aromáticos em gin e coquetéis.  
-**Funciona offline · instalável no Android, Windows e Linux · atualizações automáticas via GitHub.**
+**Modelagem físico-química de perfis aromáticos para gin e coquetéis.**  
+PWA instalável · Funciona offline · Atualizações automáticas via GitHub.
+
+🔗 **App:** https://RodrigoVassoler.github.io/GINSMITH  
+📲 **Instalar:** https://RodrigoVassoler.github.io/GINSMITH/install.html  
+📦 **Repositório:** https://github.com/RodrigoVassoler/GINSMITH
 
 ---
 
-## 🚀 Setup em 5 minutos — GitHub Pages + Deploy Automático
+## 📁 Estrutura do repositório
 
-### 1. Criar repositório
-
-```bash
-# No GitHub, crie um repositório público chamado: gin-lab
-# (ou qualquer nome — ajuste a URL depois)
+```
+GINSMITH/
+├── index.html              ← App completo (React + lógica, sem build step)
+├── install.html            ← Landing page de instalação com QR Code
+├── manifest.json           ← Configuração PWA
+├── sw.js                   ← Service Worker (cache offline)
+├── botanicals.json         ← Banco remoto de ingredientes (editável)
+├── recipes.json            ← Sync de receitas entre dispositivos
+├── build-apk.sh            ← Gerador de APK Android
+├── build_html.py           ← Gerador de index.html a partir do JSX
+├── aroma_neural_net.jsx    ← Código-fonte React (referência)
+├── icons/                  ← Ícones PWA (72px → 512px)
+└── .github/
+    └── workflows/
+        └── deploy.yml      ← Deploy automático no push para main
 ```
 
-### 2. Configurar GitHub Pages
+---
 
-1. No repositório → **Settings → Pages**
+## 🚀 Como o deploy funciona
+
+Toda vez que você faz `git push` para `main`, o GitHub Actions publica automaticamente o app em:  
+**https://RodrigoVassoler.github.io/GINSMITH**
+
+Não há build step. O `index.html` já contém todo o app — React carrega via CDN e o Babel transpila o JSX diretamente no navegador.
+
+### Configurar GitHub Pages (primeira vez)
+
+1. Repositório → **Settings → Pages**
 2. Source: **"GitHub Actions"**
 3. Salvar
 
-### 3. Fazer o primeiro push
-
-```bash
-git init
-git add .
-git commit -m "feat: gin aromatics lab v1.0.0"
-git branch -M main
-git remote add origin https://github.com/SEU_USUARIO/gin-lab.git
-git push -u origin main
-```
-
-Em ~1 minuto, o app estará em:  
-`https://SEU_USUARIO.github.io/gin-lab`
-
-### 4. Ativar atualizações automáticas no app
-
-Abra `index.html` e localize:
-```javascript
-const GITHUB_RAW_URL = "";
-```
-
-Substitua por:
-```javascript
-const GITHUB_RAW_URL = "https://raw.githubusercontent.com/SEU_USUARIO/gin-lab/main/botanicals.json";
-```
-
-Faça o push. Pronto — o app vai verificar o JSON a cada abertura.
-
 ---
 
-## 🔄 Workflow de atualização de ingredientes
+## 🔄 Atualizar ingredientes
 
-### Adicionar novos botânicos remotamente
-
-1. Edite o arquivo `botanicals.json`
-2. Incremente a versão: `"version": "1.1.0"`
-3. Adicione os novos botânicos no objeto `"botanicals"`
-4. Faça commit e push para `main`
+Edite `botanicals.json`, incremente a versão e faça push:
 
 ```json
 {
   "version": "1.1.0",
-  "releaseNotes": "5 novos botânicos da Amazônia",
-  "updatedAt": "2025-06-01",
+  "releaseNotes": "3 novos botânicos amazônicos",
+  "updatedAt": "2025-06-15",
   "botanicals": {
-    "Pimenta Baniwa": {
-      "icon": "🌶",
-      "category": "Especiarias",
-      "compounds": [
-        { "name": "Capsaicina", "conc": 0.5, "aroma": "Picante", "min": 0.01, "max": 0.10 }
-      ]
-    },
     "Cumaru": {
       "icon": "🌳",
       "category": "Amadeirados",
@@ -83,128 +66,150 @@ Faça o push. Pronto — o app vai verificar o JSON a cada abertura.
 }
 ```
 
-5. Na próxima vez que o usuário abrir o app com internet, aparece o **banner azul** de atualização
-6. Ele clica **"⬇ Atualizar"** — novos ingredientes são mesclados sem apagar o estoque
-
-> ℹ️ O `botanicals.json` só adiciona novos botânicos.  
-> Botânicos da base original (no código) nunca são removidos.
-
-### Alterar botânicos existentes
-
-Use o **🔬 Painel Admin** dentro do app (requer senha `ginlab2025`):
-- Aba **📋 Banco** → clique ✏️ para editar qualquer ingrediente
-- Aba **📥 Importar JSON** → cole um JSON para importação em massa
-- Aba **🔄 Atualizar via URL** → busca um JSON de qualquer URL
+Na próxima abertura do app com internet, aparece o **banner azul de atualização**. O usuário clica "⬇ Atualizar" e os novos botânicos são mesclados sem apagar o estoque existente.
 
 ---
 
-## 📱 Gerar APK para Android
+## 💾 Sincronizar receitas entre dispositivos
 
-### Método 1 — PWABuilder (zero instalação, recomendado)
+1. No app: **📚 → ⬇ Exportar** → baixa `gin-lab-receitas-YYYY-MM-DD.json`
+2. Renomeie para `recipes.json`
+3. Commite no repositório: `git add recipes.json && git commit -m "sync recipes" && git push`
+4. Em outro dispositivo: o app busca automaticamente em `botanicals.json` → `recipes.json` do mesmo repositório
 
-1. Faça o deploy no GitHub Pages primeiro
-2. Acesse **https://www.pwabuilder.com**
-3. Cole a URL: `https://SEU_USUARIO.github.io/gin-lab`
-4. Clique **"Start"** → aguarde a análise
-5. Clique **"Android"** → **"Generate Package"**
-6. Baixe o `.apk` e instale no celular (ative "Fontes desconhecidas" nas configurações)
+---
 
-> O APK gerado é uma **Trusted Web Activity (TWA)** — tecnologia oficial do Google  
-> que empacota o PWA em um APK nativo sem overhead.
+## 📱 Gerar APK Android
 
-### Método 2 — Bubblewrap CLI (linha de comando)
-
-Instale uma vez:
-```bash
-npm install -g @bubblewrap/cli
-```
-
-Na pasta do projeto:
-```bash
-bubblewrap init --manifest https://SEU_USUARIO.github.io/gin-lab/manifest.json
-```
-
-Responda as perguntas (ou aceite os padrões) e depois:
-```bash
-bubblewrap build
-```
-
-Gera `app-release-signed.apk` pronto para instalar.
+### Método 1 — Script automático (linha de comando)
 
 **Requisitos:**
-- Node.js 14+
-- Java JDK 8+ (para assinar o APK)
+- Node.js 14+ → https://nodejs.org
+- Java JDK 8+ → https://adoptium.net
 
-### Instalar o APK no celular
+```bash
+# Clone o repositório
+git clone https://github.com/RodrigoVassoler/GINSMITH.git
+cd GINSMITH
 
-1. Transfira o `.apk` para o Android (WhatsApp, cabo USB, Google Drive)
-2. Abra o arquivo no celular
-3. Se aparecer "Bloqueado por segurança": Configurações → Apps → Instalar apps desconhecidos → permitir para o gerenciador de arquivos
-4. Instalar → Concluído
+# Rode o script
+bash build-apk.sh
+```
 
-> **Sem Google Play Store** — instalação direta (sideload)
+O script:
+1. Verifica Node.js e Java
+2. Instala o Bubblewrap CLI (ferramenta oficial Google para PWA → APK)
+3. Gera um keystore de assinatura (guarde o arquivo `.keystore`!)
+4. Faz o build do APK via Trusted Web Activity (TWA)
+5. Salva `gin-aromatics-lab.apk` na pasta raiz
+
+**Primeira execução:** demora 5-15 min (Bubblewrap baixa o Android SDK ~500MB).  
+**Execuções seguintes:** ~2 min (SDK já em cache).
+
+### Método 2 — PWABuilder (zero instalação, mais simples)
+
+1. Acesse https://www.pwabuilder.com
+2. Cole: `https://RodrigoVassoler.github.io/GINSMITH`
+3. Clique **Start** → **Android** → **Generate Package**
+4. Baixe o `.apk`
+
+---
+
+## 📲 Instalar o APK no celular Android
+
+### Passo a passo completo
+
+**1. Transfira o APK para o celular**
+
+Escolha uma das opções:
+- **WhatsApp:** envie o `.apk` para si mesmo em uma conversa pessoal
+- **Google Drive:** faça upload e baixe no celular
+- **Cabo USB:** copie para qualquer pasta no celular
+- **Bluetooth:** envie diretamente
+
+**2. Abra o arquivo no celular**
+
+No gerenciador de arquivos, localize e toque no `gin-aromatics-lab.apk`.
+
+**3. Permitir instalação de apps desconhecidos**
+
+Na primeira vez, o Android vai bloquear e mostrar um aviso. O caminho varia por versão:
+
+| Android | Caminho |
+|---|---|
+| Android 8+ | Configurações → Apps → ícone de engrenagem → Acesso especial → Instalar apps desconhecidos → Gerenciador de arquivos → Permitir |
+| Android 7 e abaixo | Configurações → Segurança → Fontes desconhecidas → Ativar |
+
+**4. Instalar**
+
+Toque **Instalar** → aguarde ~10 segundos → **Abrir** ou procure o ícone 🌿 na tela inicial.
+
+### Atualizar o APK
+
+Para instalar uma versão nova basta rodar `bash build-apk.sh` novamente (use o mesmo `.keystore`) e transferir o novo APK. O Android substitui automaticamente o anterior.
 
 ---
 
 ## 🔐 Painel Admin
 
-Acesse pelo botão **🔬 Admin** no header do app.
+Botão **🔬 Admin** no header do app.
 
 **Senha padrão:** `ginlab2025`
 
-Para alterar, edite em `index.html`:
-```javascript
-const ADMIN_PASSWORD = "sua_nova_senha";
-```
+Para alterar: edite `const ADMIN_PASSWORD` em `aroma_neural_net.jsx` e rode `python3 build_html.py` para regenerar o `index.html`.
 
 **Funcionalidades:**
 - 📋 Visualizar e editar todos os 70+ botânicos
-- ✏️ Alterar ícone, categoria, compostos e concentrações
-- ⬇ Exportar banco completo como JSON (para backup ou atualização)
+- ✏️ Alterar ícone, categoria, compostos, concentrações
+- ⬇ Exportar banco como JSON (backup / atualização)
 - 📥 Importar JSON (mesclar ou substituir)
 - 🔄 Buscar atualização de qualquer URL pública
 
 ---
 
-## 📁 Estrutura do repositório
+## 🔧 Personalização
 
-```
-gin-lab/
-├── index.html          ← App completo (React + toda a lógica)
-├── manifest.json       ← Configuração PWA
-├── sw.js               ← Service Worker (cache offline)
-├── botanicals.json     ← Banco remoto de ingredientes (editável)
-├── icons/              ← Ícones PWA (72px → 512px)
-│   └── icon-*.png
-└── .github/
-    └── workflows/
-        └── deploy.yml  ← GitHub Actions: push → deploy automático
-```
+| O que mudar | Onde | Como aplicar |
+|---|---|---|
+| Senha admin | `ADMIN_PASSWORD` em `aroma_neural_net.jsx` | `python3 build_html.py` |
+| Versão do banco | `DB_VERSION` em `aroma_neural_net.jsx` | `python3 build_html.py` |
+| Novos ingredientes | `botanicals.json` | `git push` |
+| Nome/tema do app | `manifest.json` + `<title>` em `index.html` | editar direto |
 
 ---
 
-## 🔧 Personalização
+## 🛠 Rodar localmente (sem Vite, sem build)
 
-| O que mudar | Onde |
-|---|---|
-| Senha admin | `const ADMIN_PASSWORD` em `index.html` |
-| URL do banco remoto | `const GITHUB_RAW_URL` em `index.html` |
-| Versão do banco | `const DB_VERSION` em `index.html` |
-| Nome do app | `"name"` em `manifest.json` e `<title>` em `index.html` |
-| Cor do tema | `"theme_color"` em `manifest.json` |
-| Novos ingredientes | Edite `botanicals.json` e incremente a versão |
+Este projeto **não usa Vite nem qualquer build step**. Para testar localmente:
+
+```bash
+# Python (já vem no Linux/Mac)
+python3 -m http.server 8080
+# Acesse http://localhost:8080
+
+# Node.js
+npx serve .
+# Acesse http://localhost:3000
+```
+
+> ⚠️ Não abra o `index.html` diretamente com `file://` — o Service Worker não funciona assim.  
+> Sempre use um servidor HTTP local.
 
 ---
 
 ## 📊 Tech stack
 
-- **React 18** via CDN (sem build step)
-- **Babel Standalone** para transpilação JSX no browser
-- **Service Worker** com estratégia Cache-First para offline
-- **localStorage** para persistência de estoque e configurações
-- **GitHub Pages + Actions** para deploy automático
-- **TWA / Bubblewrap** para empacotamento Android
+| Componente | Tecnologia |
+|---|---|
+| UI | React 18 via CDN |
+| Transpilação | Babel Standalone (no browser) |
+| PDF | jsPDF 2.5 via CDN |
+| Offline | Service Worker (Cache-First) |
+| Persistência | localStorage |
+| Deploy | GitHub Pages + Actions |
+| APK Android | Bubblewrap CLI (TWA) |
 
 ---
 
-*Gin Aromatics Lab — modelagem de perfis aromáticos baseada em limiares de percepção e fatores de extração*
+*Gin Aromatics Lab — modelagem de perfis aromáticos baseada em limiares de percepção e fatores de extração*  
+*Repositório: github.com/RodrigoVassoler/GINSMITH*

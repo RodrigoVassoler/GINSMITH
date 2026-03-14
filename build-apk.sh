@@ -1,95 +1,135 @@
 #!/bin/bash
-# ═══════════════════════════════════════════════════════════════════
-#  Gin Aromatics Lab — Gerador de APK Android
-#  Usa Bubblewrap CLI (ferramenta oficial Google para PWA → APK)
-# ═══════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Gin Aromatics Lab — APK Builder
+#  Repositório: github.com/RodrigoVassoler/GINSMITH
+#
+#  Uso:
+#    bash build-apk.sh
+#
+#  O script verifica dependências, gera o APK via Bubblewrap CLI e
+#  produz gin-aromatics-lab.apk pronto para instalar no Android.
+#
+#  Requisitos:
+#    - Node.js 14+   → https://nodejs.org
+#    - Java JDK 8+   → https://adoptium.net
+#    - Conexão com internet (para baixar Bubblewrap + Android SDK)
+# ═══════════════════════════════════════════════════════════════════════════════
+
 set -e
+CYAN='\033[0;36m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
+log()  { echo -e "${CYAN}▶ $1${NC}"; }
+ok()   { echo -e "${GREEN}✓ $1${NC}"; }
+warn() { echo -e "${YELLOW}⚠ $1${NC}"; }
+err()  { echo -e "${RED}✗ $1${NC}"; exit 1; }
 
-# ── Configuração ──────────────────────────────────────────────────
-APP_URL="${1:-https://github.com/RodrigoVassoler/GINSMITH}"
-PACKAGE_ID="com.ginlab.aromatics"
+# ── Configuração do app ────────────────────────────────────────────────────────
+APP_URL="https://RodrigoVassoler.github.io/GINSMITH"
+PACKAGE_ID="com.ginsmith.aromatics"
 APP_NAME="Gin Aromatics Lab"
-APP_VERSION="1.0.0"
-APP_VERSION_CODE="1"
+LAUNCHER_NAME="Gin Lab"
+VERSION_NAME="1.0.0"
+VERSION_CODE=1
+KEYSTORE="gin-lab-key.keystore"
+KEY_ALIAS="gin-lab"
+KEY_PASS="ginlab@2025"      # ← Troque antes de distribuir publicamente
 
 echo ""
-echo "🌿 Gin Aromatics Lab — APK Builder"
-echo "════════════════════════════════════"
-echo "URL: $APP_URL"
+echo -e "${GREEN}╔═══════════════════════════════════════╗${NC}"
+echo -e "${GREEN}║   🌿 Gin Aromatics Lab — APK Builder  ║${NC}"
+echo -e "${GREEN}╚═══════════════════════════════════════╝${NC}"
+echo ""
+log "URL do app: $APP_URL"
 echo ""
 
-# ── Verificar dependências ────────────────────────────────────────
-check_dep() {
-  if ! command -v "$1" &> /dev/null; then
-    echo "❌ '$1' não encontrado. $2"
-    exit 1
-  fi
-}
-
-check_dep node "Instale Node.js em https://nodejs.org"
-check_dep java "Instale Java JDK 8+ em https://adoptium.net"
-
+# ── Verificar Node.js ──────────────────────────────────────────────────────────
+log "Verificando Node.js..."
+if ! command -v node &>/dev/null; then
+  err "Node.js não encontrado. Instale em: https://nodejs.org"
+fi
 NODE_VER=$(node -v | sed 's/v//' | cut -d. -f1)
 if [ "$NODE_VER" -lt 14 ]; then
-  echo "❌ Node.js 14+ necessário (atual: $(node -v))"
-  exit 1
+  err "Node.js 14+ necessário (atual: $(node -v)). Atualize em https://nodejs.org"
 fi
+ok "Node.js $(node -v)"
 
-echo "✓ Node.js $(node -v)"
-echo "✓ Java $(java -version 2>&1 | head -1)"
-echo ""
+# ── Verificar Java ─────────────────────────────────────────────────────────────
+log "Verificando Java..."
+if ! command -v java &>/dev/null; then
+  err "Java não encontrado. Instale o JDK 8+ em: https://adoptium.net"
+fi
+ok "Java $(java -version 2>&1 | head -1 | awk -F'"' '{print $2}')"
 
-# ── Instalar Bubblewrap se necessário ─────────────────────────────
-if ! command -v bubblewrap &> /dev/null; then
-  echo "📦 Instalando Bubblewrap CLI..."
+# ── Instalar Bubblewrap CLI ────────────────────────────────────────────────────
+log "Verificando Bubblewrap CLI..."
+if ! command -v bubblewrap &>/dev/null; then
+  warn "Bubblewrap não encontrado — instalando..."
   npm install -g @bubblewrap/cli
-  echo "✓ Bubblewrap instalado"
+  ok "Bubblewrap instalado"
 else
-  echo "✓ Bubblewrap $(bubblewrap --version 2>/dev/null || echo 'instalado')"
+  ok "Bubblewrap $(bubblewrap --version 2>/dev/null || echo 'OK')"
 fi
 
-echo ""
-
-# ── Criar diretório de build ──────────────────────────────────────
-BUILD_DIR="./apk-build"
-rm -rf "$BUILD_DIR"
+# ── Criar diretório de build ───────────────────────────────────────────────────
+BUILD_DIR="./apk-build-$(date +%Y%m%d-%H%M%S)"
+log "Criando diretório de build: $BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
 
-# ── Inicializar projeto TWA ────────────────────────────────────────
-echo "🔧 Inicializando projeto TWA..."
-echo ""
+# ── Gerar ou copiar keystore ───────────────────────────────────────────────────
+PARENT_KEYSTORE="../$KEYSTORE"
+if [ -f "$PARENT_KEYSTORE" ]; then
+  log "Keystore existente encontrado — reutilizando..."
+  cp "$PARENT_KEYSTORE" "./$KEYSTORE"
+  ok "Keystore copiado: $KEYSTORE"
+else
+  log "Gerando keystore de assinatura..."
+  keytool -genkeypair \
+    -keystore "./$KEYSTORE" \
+    -alias "$KEY_ALIAS" \
+    -keyalg RSA -keysize 2048 -validity 10000 \
+    -storepass "$KEY_PASS" -keypass "$KEY_PASS" \
+    -dname "CN=$APP_NAME, OU=Dev, O=GINSMITH, L=BR, ST=BR, C=BR" \
+    2>/dev/null
+  cp "./$KEYSTORE" "$PARENT_KEYSTORE"
+  ok "Keystore gerado e salvo em ../$KEYSTORE"
+  echo ""
+  warn "IMPORTANTE: Guarde o arquivo $KEYSTORE com segurança!"
+  warn "Você precisará dele para publicar atualizações do APK."
+  echo ""
+fi
 
-# Criar twa-manifest.json manualmente para evitar prompts interativos
+# ── Criar twa-manifest.json ────────────────────────────────────────────────────
+log "Criando manifesto TWA..."
+HOST=$(echo "$APP_URL" | sed 's|https://||' | cut -d/ -f1)
+START_PATH="/"$(echo "$APP_URL" | sed 's|https://[^/]*||')
+
 cat > twa-manifest.json << EOF
 {
   "packageId": "$PACKAGE_ID",
-  "host": "$(echo $APP_URL | sed 's|https://||' | cut -d/ -f1)",
+  "host": "$HOST",
   "name": "$APP_NAME",
-  "launcherName": "Gin Lab",
+  "launcherName": "$LAUNCHER_NAME",
   "display": "standalone",
   "orientation": "default",
   "themeColor": "#060c06",
   "navigationColor": "#060c06",
   "backgroundColor": "#060c06",
   "enableNotifications": false,
-  "startUrl": "/",
+  "startUrl": "/GINSMITH/",
   "iconUrl": "$APP_URL/icons/icon-512.png",
   "maskableIconUrl": "$APP_URL/icons/icon-512.png",
-  "appVersion": "$APP_VERSION",
-  "appVersionCode": $APP_VERSION_CODE,
+  "appVersion": "$VERSION_NAME",
+  "appVersionCode": $VERSION_CODE,
   "signingKey": {
-    "path": "./gin-lab-key.keystore",
-    "alias": "gin-lab"
+    "path": "./$KEYSTORE",
+    "alias": "$KEY_ALIAS"
   },
   "splashScreenFadeOutDuration": 300,
   "generatorApp": "bubblewrap-cli",
   "webManifestUrl": "$APP_URL/manifest.json",
   "fallbackType": "customtabs",
   "features": {},
-  "alphaDependencies": {
-    "enabled": false
-  },
+  "alphaDependencies": { "enabled": false },
   "enableSiteSettingsShortcut": true,
   "isChromeOSOnly": false,
   "isMetaQuest": false,
@@ -98,54 +138,55 @@ cat > twa-manifest.json << EOF
   "targetSdkVersion": 34
 }
 EOF
+ok "twa-manifest.json criado"
 
-echo "✓ twa-manifest.json criado"
-
-# ── Gerar keystore para assinar o APK ─────────────────────────────
+# ── Build ──────────────────────────────────────────────────────────────────────
 echo ""
-echo "🔑 Gerando keystore de assinatura..."
-keytool -genkeypair \
-  -keystore gin-lab-key.keystore \
-  -alias gin-lab \
-  -keyalg RSA \
-  -keysize 2048 \
-  -validity 10000 \
-  -storepass ginlab123 \
-  -keypass ginlab123 \
-  -dname "CN=Gin Lab, OU=Dev, O=GinLab, L=BR, ST=BR, C=BR" \
-  2>/dev/null
-echo "✓ Keystore gerado: gin-lab-key.keystore"
-echo "  ⚠️  Guarde este arquivo — necessário para atualizações futuras"
-
-# ── Build do APK ──────────────────────────────────────────────────
+log "Iniciando build do APK (pode demorar 5-15 min na primeira vez)..."
+log "O Bubblewrap vai baixar o Android SDK automaticamente se necessário."
 echo ""
-echo "🏗️  Construindo APK..."
-bubblewrap build --skipPwaValidation 2>&1 | tail -20
 
-# ── Localizar APK gerado ──────────────────────────────────────────
-APK_PATH=$(find . -name "*.apk" | head -1)
+bubblewrap build --skipPwaValidation 2>&1 | while IFS= read -r line; do
+  echo "  $line"
+done
 
-if [ -n "$APK_PATH" ]; then
-  cp "$APK_PATH" "../gin-aromatics-lab.apk"
-  APK_SIZE=$(du -sh "../gin-aromatics-lab.apk" | cut -f1)
-  echo ""
-  echo "══════════════════════════════════════════"
-  echo "✅ APK GERADO COM SUCESSO!"
-  echo "   Arquivo: gin-aromatics-lab.apk ($APK_SIZE)"
-  echo "══════════════════════════════════════════"
-  echo ""
-  echo "📱 Para instalar:"
-  echo "   1. Copie gin-aromatics-lab.apk para o Android"
-  echo "   2. Abra o arquivo no celular"
-  echo "   3. Se necessário: Configurações → Segurança → Instalar apps desconhecidos"
-  echo ""
-  echo "🔑 IMPORTANTE: Guarde o arquivo gin-lab-key.keystore"
-  echo "   Você precisará dele para publicar atualizações"
-else
-  echo ""
-  echo "⚠️  APK não encontrado no diretório de build."
-  echo "    Use o método alternativo: https://www.pwabuilder.com"
-  echo "    Cole a URL: $APP_URL"
+# ── Localizar APK ─────────────────────────────────────────────────────────────
+echo ""
+APK_FILE=$(find . -name "*.apk" 2>/dev/null | grep -v "unsigned" | head -1)
+if [ -z "$APK_FILE" ]; then
+  APK_FILE=$(find . -name "*.apk" 2>/dev/null | head -1)
 fi
 
-cd ..
+if [ -n "$APK_FILE" ]; then
+  OUTPUT="../gin-aromatics-lab.apk"
+  cp "$APK_FILE" "$OUTPUT"
+  APK_SIZE=$(du -sh "$OUTPUT" | cut -f1)
+  cd ..
+  echo ""
+  echo -e "${GREEN}╔═══════════════════════════════════════════════╗${NC}"
+  echo -e "${GREEN}║   ✅  APK GERADO COM SUCESSO!                 ║${NC}"
+  echo -e "${GREEN}╠═══════════════════════════════════════════════╣${NC}"
+  echo -e "${GREEN}║   📦 gin-aromatics-lab.apk ($APK_SIZE)              ║${NC}"
+  echo -e "${GREEN}╚═══════════════════════════════════════════════╝${NC}"
+  echo ""
+  echo -e "${CYAN}Como instalar no celular:${NC}"
+  echo "  1. Transfira o APK para o Android (WhatsApp, Drive, cabo USB)"
+  echo "  2. Abra o arquivo no celular"
+  echo "  3. Se aparecer aviso de segurança:"
+  echo "     Configurações → Segurança → Instalar apps desconhecidos → Permitir"
+  echo "  4. Toque em Instalar"
+  echo ""
+  echo -e "${CYAN}Keystore (guarde com segurança!):${NC}"
+  echo "  📁 $KEYSTORE — necessário para assinar futuras atualizações"
+  echo ""
+else
+  cd ..
+  echo ""
+  warn "APK não encontrado no diretório de build."
+  echo ""
+  echo "Alternativa sem linha de comando (método mais simples):"
+  echo "  1. Acesse https://www.pwabuilder.com"
+  echo "  2. Cole a URL: $APP_URL"
+  echo "  3. Clique Start → Android → Generate Package"
+  echo "  4. Baixe o APK gerado"
+fi
