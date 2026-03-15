@@ -9,7 +9,11 @@
   "background_color": "#060c06",
   "theme_color": "#060c06",
   "lang": "pt-BR",
-  "categories": ["food", "productivity", "utilities"],
+  "categories": [
+    "food",
+    "productivity",
+    "utilities"
+  ],
   "icons": [
     {
       "src": "https://raw.githubusercontent.com/RodrigoVassoler/GINSMITH/main/icons/icon-72.png",
@@ -65,13 +69,23 @@
       "name": "Novo Perfil Gin",
       "short_name": "Gin",
       "url": "./index.html?mode=gin",
-      "icons": [{ "src": "https://raw.githubusercontent.com/RodrigoVassoler/GINSMITH/main/icons/icon-96.png", "sizes": "96x96" }]
+      "icons": [
+        {
+          "src": "https://raw.githubusercontent.com/RodrigoVassoler/GINSMITH/main/icons/icon-96.png",
+          "sizes": "96x96"
+        }
+      ]
     },
     {
       "name": "Novo Coquetel",
       "short_name": "Coquetel",
       "url": "./index.html?mode=cocktail",
-      "icons": [{ "src": "https://raw.githubusercontent.com/RodrigoVassoler/GINSMITH/main/icons/icon-96.png", "sizes": "96x96" }]
+      "icons": [
+        {
+          "src": "https://raw.githubusercontent.com/RodrigoVassoler/GINSMITH/main/icons/icon-96.png",
+          "sizes": "96x96"
+        }
+      ]
     }
   ]
 }

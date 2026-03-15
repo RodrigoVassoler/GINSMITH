@@ -10,7 +10,7 @@
 **Use o PWABuilder — leva 2 minutos:**
 
 1. Acesse **https://www.pwabuilder.com**
-2. Cole a URL: `https://RodrigoVassoler.github.io/GINSMITH`
+2. Cole a URL: `https://RodrigoVassoler.github.io/GINSMITH
 3. Clique **Start**
 4. Clique **Android** → **Generate Package**
 5. Baixe o `.apk`
